@@ -9,7 +9,7 @@ memory = city.memory
 janela_princiapal = tk.Tk()
 janela_princiapal.title('CityBot')
 janela_princiapal.resizable(False, True)
-mensagens = []
+mensagens = list(city.load_conversations())
 
 def exibir_mensagem(remetente, texto):
    cor = '#e0ffe0' if remetente == 'Você' else "#98e9e8"
@@ -109,6 +109,8 @@ def escolher_site():
 def salvar(pergunta, resposta):
    memory.save_context({'input': pergunta}, {'output': resposta})
    city.save_conversation(pergunta, resposta)
+   
+   
 
 style = ttk.Style()
 style.configure('Custom.TLabel', foreground='black', font=('Arial', 20, 'bold'))
@@ -161,6 +163,7 @@ botoes = {
    'Informações sobre um site': escolher_site,
    'Informações sobre um PDF': escolher_pdf,
    'OCR imagem': escolher_imagem,
+   'Limpar banco de dados': city.limpar_banco,
    'Sair': janela_princiapal.destroy
 }
 
@@ -169,5 +172,8 @@ lista_indices.extend(iter(range(1,len(botoes)+1)))
 
 for i, (texto, comando) in zip(lista_indices,botoes.items()):
    ttk.Button(frame_menu, text=texto, style='Custom.TButton', width=30, command=comando).grid(row=i, column=0, padx=10, pady=5)
+
+
+
 
 janela_princiapal.mainloop()

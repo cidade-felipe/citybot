@@ -16,7 +16,7 @@ class CityBot:
         load_dotenv()
         self.api_key = os.getenv('GROQ_API_KEY')
         self.api_model = os.getenv('GROQ_API_MODEL')
-        self.conexao = sqlite3.connect('city.db')
+        self.conexao = sqlite3.connect('citybot.db')
         self.create_table()
         self.memory = ConversationBufferWindowMemory(k=1000000)
 
@@ -150,6 +150,20 @@ class CityBot:
         except Exception as e:
             print(f'Erro ao salvar a imagem: {e}')
             return ''
+
+    def limpar_banco(self):
+        cursor = self.conexao.cursor()
+
+        # Obter lista de tabelas existentes
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tabelas = cursor.fetchall()
+
+        # Deletar todas as tabelas
+        for (tabela,) in tabelas:
+            cursor.execute(f"DROP TABLE IF EXISTS {tabela}")
+
+        self.conexao.commit()
+            
 
     def menu(self):
         memory = self.memory
