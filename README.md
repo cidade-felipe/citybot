@@ -1,330 +1,272 @@
-# CityBot - Assistente Inteligente Multimodal
+# CityBot
 
-![Assistente AI](https://img.shields.io/badge/IA-Assistente-blueviolet)
-![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
-[![Licença: MIT](https://img.shields.io/badge/Licen%C3%A7a-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+CityBot é um assistente inteligente em Python que combina modelos de linguagem, OCR, leitura de PDFs, páginas da web e vídeos do YouTube em uma única interface.  
+Ele permite conversar em linguagem natural sobre o conteúdo de arquivos e links, além de manter histórico em um banco SQLite e contar com memória de conversas.
 
-CityBot é um assistente de inteligência artificial desenvolvido em Python que integra múltiplas capacidades de processamento de dados incluindo extração de conteúdo web, análise de documentos e visão computacional.
+<div align="center">
 
-## Sumário
+![Status](https://img.shields.io/badge/status-em%20desenvolvimento-yellow)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Python](https://img.shields.io/badge/python-3.x-blue)
+![Interface](https://img.shields.io/badge/interface-CLI%20%7C%20Tkinter-lightblue)
 
-- [CityBot - Assistente Inteligente Multimodal](#citybot---assistente-inteligente-multimodal)
-  - [Sumário](#sumário)
-  - [Visão da Arquitetura](#visão-da-arquitetura)
-  - [Diagramas de Classes do CityBot](#diagramas-de-classes-do-citybot)
-    - [1. Diagrama de Classes - Núcleo do CityBot](#1-diagrama-de-classes---núcleo-do-citybot)
-    - [2. Diagrama de Classes - Módulos de Entrada Multimodal](#2-diagrama-de-classes---módulos-de-entrada-multimodal)
-  - [Funcionalidades Principais](#funcionalidades-principais)
-    - [Processamento de Linguagem Natural](#processamento-de-linguagem-natural)
-    - [Processamento Multimodal de Dados](#processamento-multimodal-de-dados)
-    - [Persistência de Dados](#persistência-de-dados)
-  - [Instalação e Configuração do Ambiente](#instalação-e-configuração-do-ambiente)
-    - [Pré-requisitos](#pré-requisitos)
-      - [1. Clone o repositório](#1-clone-o-repositório)
-      - [2. Crie e ative um ambiente virtual (recomendado)](#2-crie-e-ative-um-ambiente-virtual-recomendado)
-      - [3. Instale as dependências](#3-instale-as-dependências)
-      - [4. Instale o Tesseract OCR](#4-instale-o-tesseract-ocr)
-      - [5. Configure sua chave de API e modelo de LLM](#5-configure-sua-chave-de-api-e-modelo-de-llm)
-      - [6. Execute o CityBot](#6-execute-o-citybot)
-    - [Compatibilidade do Sistema](#compatibilidade-do-sistema)
-  - [Resumo das Funcionalidades](#resumo-das-funcionalidades)
-    - [Conversa Natural com Memória](#conversa-natural-com-memória)
-    - [Leitura e Interpretação de Sites](#leitura-e-interpretação-de-sites)
-    - [Análise de Vídeos do YouTube](#análise-de-vídeos-do-youtube)
-    - [Leitura de PDFs](#leitura-de-pdfs)
-    - [OCR de Imagens](#ocr-de-imagens)
-    - [Histórico de Conversas](#histórico-de-conversas)
-    - [Integração com LangChain + Groq](#integração-com-langchain--groq)
-    - [Interface via Terminal com Menu Interativo](#interface-via-terminal-com-menu-interativo)
-    - [Suporte a Clipboard (Área de Transferência)](#suporte-a-clipboard-área-de-transferência)
+</div>
 
+---
 
-## Visão da Arquitetura
+## Visão geral
 
-```mermaid
-graph TD
-    A[Interface do Usuário] --> B[Núcleo de Processamento]
-    B --> C[Processamento de Linguagem Natural]
-    B --> D[Módulos de Extração de Dados]
-    C --> E[Integração Groq/Llama]
-    D --> F[Web Scraping]
-    D --> G[Processamento de PDF]
-    D --> H[Motor OCR]
-    B --> I[Gerenciamento de Memória]
-    I --> J[Buffer de Conversação]
-    I --> K[Banco de Dados SQLite]
+O CityBot foi pensado como um assistente pessoal para estudo e trabalho, capaz de:
+
+- Conversar em linguagem natural sobre qualquer assunto
+- Ler e resumir PDFs
+- Ler e interpretar páginas da web
+- Transcrever e analisar vídeos do YouTube
+- Ler texto em imagens usando OCR e salvar o resultado
+- Manter histórico de conversas em um banco SQLite
+- Oferecer interação tanto por linha de comando quanto por interface gráfica desenvolvida em Tkinter
+
+Ele usa LangChain com a API da Groq como modelo de linguagem e integra várias fontes de informação em um fluxo único de conversa.
+
+---
+
+## Principais funcionalidades
+
+- Chat em linguagem natural com o modelo LLM via Groq
+- Leitura de conteúdo de sites com `WebBaseLoader`
+- Transcrição de vídeos do YouTube com `YoutubeLoader`
+- Leitura de PDFs com `PyPDFLoader`
+- OCR de imagens com OpenCV + Tesseract + langdetect
+- Salvamento de texto de imagens em `.docx` e `.txt`
+- Histórico de conversas e usuários em SQLite
+- Interface de linha de comando com menu interativo
+- Interface gráfica com Tkinter, área de chat e botões para PDF, site e imagem
+
+---
+
+## Arquitetura em alto nível
+
+O projeto é estruturado em torno da classe `CityBot`, que concentra:
+
+- Conexão com o banco `citybot.db` (SQLite)
+- Criação das tabelas `users` e `conversations`
+- Métodos de carregamento de dados:
+  - `carrega_site`
+  - `carrega_video`
+  - `carrega_pdf`
+  - `carrega_imagem_ocr`
+- Método `resposta_bot`, que monta o prompt, envia a requisição ao modelo Groq via LangChain e retorna a resposta
+- Métodos de persistência no banco (salvar usuário, carregar usuário, salvar conversa, carregar conversas)
+- Menu de linha de comando (`menu`) para interação no terminal
+
+Além disso, há uma camada de interface gráfica em Tkinter que:
+
+- Mostra mensagens do usuário e do bot com cores diferentes
+- Permite digitar mensagens de texto
+- Possui botões para:
+  - Ler site
+  - Ler PDF
+  - Fazer OCR em imagem
+  - Limpar banco de dados
+  - Encerrar a aplicação
+
+---
+
+## Tecnologias utilizadas
+
+- Python 3.x
+- LangChain (com `ChatGroq` e `ChatPromptTemplate`)
+- Groq API para modelos de linguagem
+- SQLite (via `sqlite3`)
+- Tkinter (interface gráfica)
+- OpenCV (`cv2`)
+- Tesseract OCR (`pytesseract`)
+- `langdetect` para detectar idioma do texto
+- `python-docx` para gerar arquivos `.docx`
+- `pyperclip` para integração com área de transferência
+- `python-dotenv` para carregamento de variáveis de ambiente
+- `Pillow` (PIL) para tratar imagem do logo na interface
+
+---
+
+## Requisitos
+
+Lista geral de dependências principais:
+
+```text
+python-dotenv
+langchain
+langchain-groq
+langchain-community
+pytesseract
+opencv-python
+python-docx
+langdetect
+pyperclip
+pillow
+pypdf
+yt-dlp ou dependências do YoutubeLoader
+````
+
+Requisitos externos:
+
+* Tesseract instalado na máquina e acessível pelo sistema
+* Uma chave de API válida da Groq
+
+---
+
+## Configuração das variáveis de ambiente
+
+O CityBot espera encontrar as variáveis abaixo em um arquivo `.env` na raiz do projeto:
+
+```text
+GROQ_API_KEY=SuaChaveAqui
+GROQ_API_MODEL=nome_do_modelo_groq
 ```
 
----
+Exemplos de modelos que podem ser usados (mencionados no código):
 
-## Diagramas de Classes do CityBot
-
-### 1. Diagrama de Classes - Núcleo do CityBot
-```mermaid
-classDiagram
-    class CityBot {
-        +run()
-        -user
-        -memory
-        -llm
-        -conversation_history
-    }
-
-    class User {
-        +id: int
-        +name: str
-        +preferences: dict
-    }
-
-    class ConversationMemory {
-        +add_message()
-        +get_history()
-        -window_size: int
-        -buffer: list
-    }
-
-    class LLMClient {
-        +query(prompt: str): str
-        -api_key: str
-        -model: str
-    }
-
-    class DatabaseManager {
-        +save_user(user)
-        +save_conversation(user, msg)
-        +load_user()
-        +load_conversations()
-        -db_path: str
-    }
-
-    CityBot --> User
-    CityBot --> ConversationMemory
-    CityBot --> LLMClient
-    CityBot --> DatabaseManager
-```
-
-### 2. Diagrama de Classes - Módulos de Entrada Multimodal
-```mermaid
-classDiagram
-    class WebScraper {
-        +load_url(url: str): str
-    }
-
-    class PDFProcessor {
-        +extract_text(file_path: str): str
-    }
-
-    class YouTubeAnalyzer {
-        +transcribe(video_url: str): str
-    }
-
-    class OCRProcessor {
-        +image_to_text(img_path: str): str
-    }
-
-    class ClipboardWatcher {
-        +detect_clipboard(): str
-    }
-
-    class FileManager {
-        +save_text(text, filename)
-        +save_docx(text, filename)
-    }
-
-    CityBot --> WebScraper
-    CityBot --> PDFProcessor
-    CityBot --> YouTubeAnalyzer
-    CityBot --> OCRProcessor
-    CityBot --> ClipboardWatcher
-    CityBot --> FileManager
-```
+* `llama-3.3-70b-versatile`
+* `llama-3.1-8b-instant`
+* `llama3-70b-8192`
+* `llama3-8b-8192`
+* `gemma2-9b-it`
+* `llama-3.2-1b-preview`
+* `llama-3.2-3b-preview`
+* `llama-3.2-11b-vision-preview`
+* `llama-3.2-90b-vision-preview`
 
 ---
 
-## Funcionalidades Principais
+## Banco de dados
 
-### Processamento de Linguagem Natural
+O arquivo `citybot.db` é criado automaticamente, e as tabelas são:
 
-- **Motor**: API Groq com modelo Llama
-- **Memória**: Buffer de contexto com histórico de 1000000 interações
-- **Personalização**: Templates dinâmicos de prompt via `ChatPromptTemplate`
-- **Integração**: Suporte a `ConversationBufferWindowMemory` do LangChain
+* `users`
 
----
+  * `user_id`
+  * `name`
+  * `preferences`
 
-### Processamento Multimodal de Dados
+* `conversations`
 
-| Módulo                 | Tecnologia           | Capacidades                                                                       |
-| ----------------------- | -------------------- | --------------------------------------------------------------------------------- |
-| **Conteúdo Web** | WebBaseLoader        | Extração de texto completo (incluindo artigos, blogs e páginas institucionais) |
-| **Vídeos**       | YoutubeLoader        | Transcrição automática (suporte a múltiplos idiomas)                          |
-| **Documentos**    | PyPDFLoader          | Processamento de PDFs com preservação de estrutura (texto multipágina)         |
-| **OCR**           | OpenCV + pytesseract | Reconhecimento de texto em imagens (PNG, JPG, PDF escaneados)                     |
+  * `id`
+  * `user_message`
+  * `assistant_response`
 
-### Persistência de Dados
-
-- **Armazenamento**:
-  - SQLite com esquema relacional otimizado
-  - Tabelas: `users` (preferências) e `conversations` (histórico completo)
-- **Recuperação**:
-  - Métodos `load_user()` e `load_conversations()` para consulta
-  - Timestamp automático em todas as interações
+Há também um método `limpar_banco` que remove todas as tabelas, caso seja necessário começar do zero.
 
 ---
 
-## Instalação e Configuração do Ambiente
+## Como executar
 
-Para rodar o **CityBot**, siga os passos abaixo para instalar todas as bibliotecas necessárias, configurar seu ambiente e ativar o suporte para OCR, leitura de PDFs, scraping de sites e análise de vídeos do YouTube.
+A estrutura exata de arquivos pode variar, então ajuste o nome do arquivo principal conforme o seu projeto.
+Os exemplos abaixo assumem que o arquivo com a classe e o menu CLI é `citybot.py` e que a interface gráfica está no mesmo arquivo ou em um arquivo associado.
 
-### Pré-requisitos
-
-Antes de começar, certifique-se de que você possui os seguintes itens:
-
-- Python **3.8** ou superior instalado em seu sistema
-- Git instalado (opcional, mas útil para clonar repositórios)
-- Conexão ativa com a internet
-- Conta criada no [site da Groq](https://console.groq.com/home)
-- Chave de acesso à [API da Groq](https://console.groq.com/keys)
-- Modelo de LLM selecionado a partir da [documentação da Groq](https://console.groq.com/docs/models)
-
-#### 1. Clone o repositório
+### 1. Clonar o repositório
 
 ```bash
-git clone https://github.com/felipecidade94/citybot
+git clone https://github.com/cidade-felipe/citybot.git
 cd citybot
 ```
 
-#### 2. Crie e ative um ambiente virtual (recomendado)
+### 2. Criar ambiente virtual (opcional)
 
 ```bash
-# Linux/macOS
-python3 -m venv venv
-source venv/bin/activate
-
-# Windows
-python -m venv venv
-./venv/Scripts/activate
+python -m venv .venv
+source .venv/bin/activate   # Linux / macOS
+.\.venv\Scripts\activate    # Windows
 ```
 
-#### 3. Instale as dependências
+### 3. Instalar dependências
+
+Se você tiver um `requirements.txt`, use:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-ou instale manualmente
+Caso ainda não tenha, instale as principais bibliotecas:
 
 ```bash
-pip install langchain langchain-community langchain-groq pytesseract opencv-python python-docx pyperclip python-dotenv
+pip install python-dotenv langchain langchain-groq langchain-community pytesseract opencv-python python-docx langdetect pyperclip pillow
 ```
 
-#### 4. Instale o Tesseract OCR
+### 4. Executar o CityBot no terminal (CLI)
 
-O Tesseract é uma dependência obrigatória para a funcionalidade de OCR (leitura de texto em imagens).
-
-- **Windows**
-
-1. Baixe o instalador em: [https://github.com/tesseract-ocr/tesseract/releases](https://github.com/tesseract-ocr/tesseract/releases)
-2. Durante a instalação, selecione o idioma **Portuguese**.
-3. Adicione o caminho do `tesseract.exe` à variável de ambiente `PATH`.
-
-- **Linux (Debian/Ubuntu)**
-
-```bash
-sudo apt update
-sudo apt install tesseract-ocr tesseract-ocr-por
-```
-
-- **macOS (via Homebrew)**
-
-```bash
-brew install tesseract
-```
-
-#### 5. Configure sua chave de API e modelo de LLM
-
-Crie um arquivo chamado .env na raiz do projeto com o seguinte conteúdo:
-
-```bash
-GROQ_API_KEY=sua_chave_api_groq_aqui
-GROQ_API_MODEL=nome_do_modelo
-```
-
-#### 6. Execute o CityBot
-
-Com tudo pronto, basta rodar o chatbot no terminal:
+Se o menu principal estiver no próprio `citybot.py`:
 
 ```bash
 python citybot.py
 ```
 
----
+O menu oferece opções como:
 
-### Compatibilidade do Sistema
+1. Conversar
+2. Informações sobre um site
+3. Informações sobre um vídeo do YouTube
+4. Informações sobre um PDF
+5. OCR de imagem
+6. Sair
 
-| Sistema Operacional | Status         | Requisitos Adicionais                  |
-| ------------------- | -------------- | -------------------------------------- |
-| Windows 10/11       | ✔️ Suportado | Adicionar Tesseract ao PATH do sistema |
-| Ubuntu 22.04 LTS    | ✔️ Suportado | `sudo apt install tesseract-ocr`     |
-| macOS Monterey      | ⚠️ Limitado  | Problemas conhecidos em chips M1/M2    |
+### 5. Executar o CityBot com interface gráfica (Tkinter)
 
-**Legenda:**
-
-- ✔️ = Suporte completo
-- ⚠️ = Funcionalidade limitada
-
-**Notas Adicionais:**
-
-1. **Windows**: Requer [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) instalado
-2. **Linux**: Pacotes recomendados:
+Se a parte gráfica estiver no mesmo arquivo, o comando pode ser o mesmo.
+Se estiver separada, por exemplo em `citybot_gui.py`, use:
 
 ```bash
-   sudo apt install libtesseract-dev tesseract-ocr-por
+python citybot_gui.py
 ```
 
-3. **macOS:** Para chips Apple Silicon, instale via Homebrew:
+A interface de chat permite:
 
-```bash
-brew install tesseract
-brew install tesseract-lang
-```
+* Escrever mensagens para o CityBot
+* Carregar PDF, site e imagem por botões
+* Mostrar respostas formatadas em balões coloridos
+* Rolagem automática das mensagens
 
 ---
 
-## Resumo das Funcionalidades
+## Fluxos suportados
 
-### Conversa Natural com Memória
+Resumo dos fluxos principais:
 
-O CityBot permite conversas contínuas com um assistente baseado em LLM, mantendo o histórico de mensagens no banco de dados SQLite. Ideal para explorar temas diversos com continuidade e contexto nas respostas.
+* Chat livre:
+  O usuário conversa diretamente com o CityBot, que responde usando o modelo configurado.
 
-### Leitura e Interpretação de Sites
+* PDF:
+  O bot carrega o PDF, extrai o texto e passa a responder com base nesse conteúdo.
 
-Com a funcionalidade de carregamento de sites, o CityBot extrai e interpreta o conteúdo textual de qualquer URL informada. Você pode fazer perguntas diretamente sobre o conteúdo da página.
+* Site:
+  O bot faz o scrape da página indicada e usa o texto carregado como contexto da conversa.
 
-### Análise de Vídeos do YouTube
+* Vídeo do YouTube:
+  O bot carrega a transcrição do vídeo e responde conforme as perguntas sobre o conteúdo.
 
-Insira a URL de um vídeo do YouTube e o CityBot transcreve e analisa automaticamente o conteúdo falado (em português). É possível realizar perguntas sobre o vídeo como se fosse um artigo ou aula.
+* Imagem (OCR):
+  O bot detecta o texto na imagem, salva em `.docx` e `.txt` e pode responder sobre esse conteúdo.
 
-### Leitura de PDFs
+---
 
-O CityBot pode carregar documentos PDF diretamente do seu sistema, extrair seu conteúdo textual e responder perguntas com base nessas informações, como um leitor inteligente de documentos.
+## Melhorias futuras
 
-### OCR de Imagens
+Algumas ideias de evolução para o projeto:
 
-Utilizando Tesseract OCR e OpenCV, o CityBot realiza a extração automática do texto presente em imagens, com suporte para a detecção inteligente de múltiplos idiomas. O conteúdo reconhecido é salvo automaticamente nos formatos `.docx` e `.txt`, com o nome especificado pelo usuário. Além disso, você pode interagir fazendo perguntas sobre o texto extraído de forma prática e eficiente.
+* Adicionar seleção de modelos direto na interface
+* Criar perfis de usuário com preferências reais
+* Organizar o projeto em pacotes (`src/`) para facilitar manutenção
+* Adicionar logs mais detalhados de erros
+* Integrar com outras fontes, como arquivos `.docx` diretos ou bancos externos
 
-### Histórico de Conversas
+---
 
-Todas as interações com o assistente são armazenadas no banco de dados local (`citybot.db`), permitindo reuso de contexto e análise futura das conversas.
+## Autor
 
-### Integração com LangChain + Groq
+Felipe Cidade
 
-O CityBot é construído com LangChain, utilizando o modelo LLaMA 3.3-70B da Groq via API. A arquitetura com `ChatPromptTemplate` e `ConversationBufferWindowMemory` permite diálogos fluidos, com controle de contexto e persistência.
+---
 
-### Interface via Terminal com Menu Interativo
+## Licença
 
-A interface principal é um menu em terminal, onde o usuário pode selecionar opções como conversar, carregar PDFs, vídeos, imagens, ou sites. O controle do fluxo é feito de forma simples e clara.
-
-### Suporte a Clipboard (Área de Transferência)
-
-Detecta automaticamente se o usuário está usando colagem (CTRL+V) para facilitar o envio de trechos longos. Perfeito para interações com textos copiados de outras fontes.
+Este projeto está licenciado sob a licença MIT.
+Veja o arquivo `LICENSE` para mais detalhes.
