@@ -8,7 +8,7 @@ city = CityBot()
 memory = city.memory
 janela_princiapal = tk.Tk()
 janela_princiapal.title('CityBot')
-janela_princiapal.resizable(False, True)
+janela_princiapal.resizable(True, True)
 mensagens = list(city.load_conversations())
 
 def exibir_mensagem(remetente, texto):
@@ -116,7 +116,7 @@ style = ttk.Style()
 style.configure('Custom.TLabel', foreground='black', font=('Arial', 20, 'bold'))
 style.configure('Custom.TButton', padding=1, font=('Arial', 12), foreground='black', background='#add8e6')
 
-logo_imagem = Image.open('./testes/logo.png')
+logo_imagem = Image.open('./logo.png')
 logo_imagem = logo_imagem.resize((150,150))
 logo = ImageTk.PhotoImage(logo_imagem)
 
