@@ -186,9 +186,7 @@ class CityBot:
             home / 'OneDrive',
         ]
         pastas = []
-        for pasta in candidatos:
-            if pasta.exists():
-                pastas.append(pasta)
+        pastas.extend(pasta for pasta in candidatos if pasta.exists())
         return pastas
 
     def buscar_arquivos(self, termo='', extensoes=None, limite=100, diretorios=None):
