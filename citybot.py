@@ -1,15 +1,17 @@
 import os
 import sqlite3
+from pathlib import Path
+
 import cv2
-import pytesseract
-from langchain_groq import ChatGroq
-from langchain.prompts import ChatPromptTemplate
-from langchain.memory import ConversationBufferWindowMemory
 import pyperclip
-from langchain_community.document_loaders import PyPDFLoader, WebBaseLoader, YoutubeLoader
+import pytesseract
 from docx import Document
 from dotenv import load_dotenv
-from langdetect import detect, LangDetectException
+from langchain.memory import ConversationBufferWindowMemory
+from langchain.prompts import ChatPromptTemplate
+from langchain_community.document_loaders import PyPDFLoader, WebBaseLoader, YoutubeLoader
+from langchain_groq import ChatGroq
+from langdetect import LangDetectException, detect
 
 class CityBot:
     def __init__(self):
@@ -27,7 +29,7 @@ class CityBot:
                 user_id INTEGER PRIMARY KEY,
                 name TEXT,
                 preferences TEXT
-            )
+            );
             """)
 
             self.conexao.execute("""
@@ -35,24 +37,24 @@ class CityBot:
                 id INTEGER PRIMARY KEY,
                 user_message TEXT,
                 assistant_response TEXT
-            )
+            );
             """)
 
     def save_user(self, name, preferences):
         with self.conexao:
-            self.conexao.execute("INSERT INTO users (name, preferences) VALUES (?, ?)", (name, preferences))
+            self.conexao.execute("INSERT INTO users (name, preferences) VALUES (?, ?);", (name, preferences))
 
     def load_user(self, name):
         with self.conexao:
-            return self.conexao.execute("SELECT * FROM users WHERE name = ?", (name,)).fetchone()
+            return self.conexao.execute("SELECT * FROM users WHERE name = ?;", (name,)).fetchone()
 
     def save_conversation(self, user_message, assistant_response):
         with self.conexao:
-            self.conexao.execute("INSERT INTO conversations (user_message, assistant_response) VALUES (?, ?)", (user_message, assistant_response))
+            self.conexao.execute("INSERT INTO conversations (user_message, assistant_response) VALUES (?, ?);", (user_message, assistant_response))
 
     def load_conversations(self):
         with self.conexao:
-            return self.conexao.execute("SELECT user_message, assistant_response FROM conversations").fetchall()
+            return self.conexao.execute("SELECT user_message, assistant_response FROM conversations;").fetchall()
 
     def chat(self):
         return ChatGroq(model=self.api_model)
@@ -160,10 +162,57 @@ class CityBot:
 
         # Deletar todas as tabelas
         for (tabela,) in tabelas:
-            cursor.execute(f"DROP TABLE IF EXISTS {tabela}")
+            cursor.execute(f"DROP TABLE IF EXISTS {tabela};")
 
         self.conexao.commit()
-            
+
+    def conversar(self, pergunta, contexto=''):
+        pergunta = (pergunta or '').strip()
+        if not pergunta:
+            raise ValueError('A pergunta não pode estar vazia.')
+        mensagens = list(self.load_conversations())
+        mensagens.append(('user', pergunta))
+        resposta = self.resposta_bot(mensagens, contexto)
+        self.memory.save_context({'input': pergunta}, {'output': resposta})
+        self.save_conversation(pergunta, resposta)
+        return resposta
+
+    def pastas_padrao(self):
+        home = Path.home()
+        candidatos = [
+            home / 'Desktop',
+            home / 'Documents',
+            home / 'Downloads',
+            home / 'OneDrive',
+        ]
+        pastas = []
+        for pasta in candidatos:
+            if pasta.exists():
+                pastas.append(pasta)
+        return pastas
+
+    def buscar_arquivos(self, termo='', extensoes=None, limite=100, diretorios=None):
+        extensoes = [ext.lower() for ext in (extensoes or []) if ext]
+        termo = (termo or '').strip().lower()
+        diretorios = diretorios or self.pastas_padrao()
+        resultados = []
+
+        for base in diretorios:
+            if not Path(base).exists():
+                continue
+            for raiz, _, arquivos in os.walk(base):
+                for arquivo in arquivos:
+                    nome = arquivo.lower()
+                    if termo and termo not in nome:
+                        continue
+                    if extensoes and Path(arquivo).suffix.lower() not in extensoes:
+                        continue
+                    caminho = str(Path(raiz) / arquivo)
+                    resultados.append(caminho)
+                    if len(resultados) >= limite:
+                        return sorted(resultados)
+        return sorted(resultados)
+
 
     def menu(self):
         memory = self.memory
