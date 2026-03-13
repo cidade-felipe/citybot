@@ -1,54 +1,46 @@
 import os
-import sqlite3
 import pyperclip
-import requests
-from bs4 import BeautifulSoup
-from pypdf import PdfReader
-from youtube_transcript_api import YouTubeTranscriptApi
-from docx import Document
 from dotenv import load_dotenv
-from PIL import Image
 from google import genai
 from google.genai import types
 
-os.makedirs('textos', exist_ok=True)  
+from src.core.database import CityBotDatabase
+from src.utils.scrapers import carrega_site, carrega_video
+from src.utils.pdf_reader import carrega_pdf
+from src.utils.ocr import carrega_imagem_ocr_gemini
 
-class CityBot:
+class CityBotGemini:
     def __init__(self):
         load_dotenv()
         self.api_key = os.getenv('GEMINI_API_KEY')
         if not self.api_key:
-            print("ERRO: GOOGLE_API_KEY não encontrada no arquivo .env")
+            print("ERRO: GEMINI_API_KEY não encontrada no arquivo .env")
         
         self.client = genai.Client(api_key=self.api_key)
-        self.model_name = os.getenv('GEMINI_MODEL')        
-        self.conexao = sqlite3.connect('citybot.db')
-        self.create_table()
+        self.model_name = os.getenv('GEMINI_MODEL')
+        
+        self.db = CityBotDatabase()
 
-    def create_table(self):
-        with self.conexao:
-            self.conexao.execute("""
-            CREATE TABLE IF NOT EXISTS conversations (
-                id INTEGER PRIMARY KEY,
-                user_message TEXT,
-                assistant_response TEXT
-            )
-            """)
-            self.conexao.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY,
-                name TEXT,
-                preferences TEXT
-            )
-            """)
+    def carrega_site(self, url):
+        return carrega_site(url)
+        
+    def carrega_video(self, url):
+        return carrega_video(url)
+        
+    def carrega_pdf(self, path):
+        return carrega_pdf(path)
+        
+    def carrega_imagem_ocr(self, path, nome):
+        return carrega_imagem_ocr_gemini(path, self.client, self.model_name)
 
     def save_conversation(self, user_message, assistant_response):
-        with self.conexao:
-            self.conexao.execute("INSERT INTO conversations (user_message, assistant_response) VALUES (?, ?)", (user_message, assistant_response))
+        self.db.save_conversation(user_message, assistant_response)
 
     def load_conversations(self):
-        with self.conexao:
-            return self.conexao.execute("SELECT user_message, assistant_response FROM conversations").fetchall()
+        return self.db.load_conversations()
+
+    def limpar_banco(self):
+        self.db.limpar_banco()
 
     def resposta_bot(self, mensagens, documento=''):
         instrucao_sistema = (
@@ -86,98 +78,6 @@ class CityBot:
             
         except Exception as e:
             return f"Erro na API do Gemini: {e}"
-
-    def carrega_site(self, url_site):
-        try:
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            response = requests.get(url_site, headers=headers)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, 'html.parser')
-            for script in soup(["script", "style"]):
-                script.decompose()
-            
-            texto = soup.get_text(separator=' ')
-            lines = (line.strip() for line in texto.splitlines())
-            chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-            return '\n'.join(chunk for chunk in chunks if chunk)
-        except Exception as e:
-            print(f'Erro ao carregar o site: {e}')
-            return ''
-
-    def carrega_video(self, url_video):
-        try:
-            video_id = None
-            if "v=" in url_video:
-                video_id = url_video.split("v=")[1].split("&")[0]
-            elif "youtu.be" in url_video:
-                video_id = url_video.split("/")[-1]
-            
-            if not video_id:
-                return "ID do vídeo não encontrado."
-
-            api = YouTubeTranscriptApi()
-            transcript_list = api.fetch(video_id, languages=['pt', 'en'])
-            
-            textos = []
-            for t in transcript_list:
-                if isinstance(t, dict) and 'text' in t:
-                    textos.append(t['text'])
-                elif hasattr(t, 'text'):
-                    textos.append(t.text)
-                    
-            return " ".join(textos)
-            
-        except Exception as e:
-            print(f'Erro ao carregar o vídeo: {e}')
-            return ''
-
-    def carrega_pdf(self, caminho):
-        try:
-            if not os.path.exists(caminho):
-                raise FileNotFoundError(f'Arquivo não encontrado: {caminho}')
-            
-            reader = PdfReader(caminho)
-            texto_completo = ""
-            for page in reader.pages:
-                texto_completo += page.extract_text() + "\n"
-            return texto_completo
-        except Exception as e:
-            print(f'Erro ao carregar o PDF: {e}')
-            return ''
-
-    def carrega_imagem_ocr(self, caminho, nome):
-        try:
-            if not os.path.exists(caminho):
-                raise FileNotFoundError(f'Arquivo não encontrado: {caminho}')
-            
-            print("Enviando imagem para o Gemini analisar...")
-            imagem = Image.open(caminho)
-            prompt = "Por favor, extraia e transcreva todo o texto visível nesta imagem. Mantenha a formatação original (como tabelas ou listas) na medida do possível. Se não houver texto, apenas descreva o que tem na imagem."
-            
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=[imagem, prompt]
-            )
-            
-            texto_final = response.text
-            self.salvar_texto(texto_final, nome)
-            return texto_final
-            
-        except Exception as e:
-            print(f'Erro ao processar a imagem com Gemini: {e}')
-            return ''
-        
-    def salvar_texto(self, texto, nome):
-        try:
-            documento = Document()
-            documento.add_paragraph(texto)
-            documento.save(f'textos/{nome}.docx')
-            with open(f'textos/{nome}.txt', 'w', encoding='utf-8') as file:
-                file.write(texto)
-            return texto
-        except Exception as e:
-            print(f'Erro ao salvar texto: {e}')
-            return ''
 
     def menu(self):
         pyperclip.copy('')
@@ -260,7 +160,3 @@ class CityBot:
                 self.save_conversation(pergunta, resposta)
                 
                 print(f"\nCityBot: {resposta}")
-
-if __name__ == '__main__':
-    city_bot = CityBot()
-    city_bot.menu()

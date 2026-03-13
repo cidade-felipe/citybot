@@ -1,6 +1,6 @@
 # CityBot
 
-CityBot é um assistente inteligente em Python que combina modelos de linguagem, OCR, leitura de PDFs, páginas da web e vídeos do YouTube em uma única interface.  
+CityBot é um assistente inteligente em Python que combina modelos de linguagem, OCR, leitura de PDFs, páginas da web e vídeos do YouTube em uma única interface.
 Ele permite conversar em linguagem natural sobre o conteúdo de arquivos e links, além de manter histórico em um banco SQLite e contar com memória de conversas.
 
 <div align="center">
@@ -44,31 +44,43 @@ Ele suporta opções de inteligência artificial através das APIs da Groq ou Go
 
 ---
 
-## Arquitetura em alto nível
+## Estrutura do Projeto
 
-O projeto é estruturado em torno da classe `CityBot`, que concentra:
+O projeto segue agora uma estrutura modular organizada na pasta `src/`:
 
-- Conexão com o banco `citybot.db` (SQLite)
-- Criação das tabelas `users` e `conversations`
-- Métodos de carregamento de dados:
-  - `carrega_site`
-  - `carrega_video`
-  - `carrega_pdf`
-  - `carrega_imagem_ocr`
-- Método `resposta_bot`, que monta o prompt, envia a requisição ao modelo Groq via LangChain e retorna a resposta
-- Métodos de persistência no banco (salvar usuário, carregar usuário, salvar conversa, carregar conversas)
-- Menu de linha de comando (`menu`) para interação no terminal
+```text
+citybot/
+├── main.py                 # Ponto de entrada unificado (CLI e GUI)
+├── logo.png                # Logo da aplicação
+├── requirements.txt        # Dependências
+├── .env                    # Configurações de API
+│
+├── src/
+│   ├── core/               # Lógica de negócio e banco de dados
+│   │   ├── database.py     # Gerenciamento SQLite
+│   │   ├── bot_groq.py     # Implementação Groq
+│   │   └── bot_gemini.py   # Implementação Gemini
+│   │
+│   ├── gui/                # Interfaces gráficas (Tkinter)
+│   │   ├── app_groq.py
+│   │   └── app_gemini.py
+│   │
+│   └── utils/              # Funções utilitárias (OCR, Scrapers, PDF)
+│       ├── scrapers.py
+│       ├── pdf_reader.py
+│       ├── ocr.py
+│       └── file_writer.py
+```
 
-Além disso, há uma camada de interface gráfica em Tkinter que:
+---
 
-- Mostra mensagens do usuário e do bot com cores diferentes
-- Permite digitar mensagens de texto
-- Possui botões para:
-  - Ler site
-  - Ler PDF
-  - Fazer OCR em imagem
-  - Limpar banco de dados
-  - Encerrar a aplicação
+## Arquitetura e Organização
+
+A refatoração dividiu as responsabilidades em níveis:
+
+1. **Core (`src/core`)**: Contém a inteligência e o banco de dados. As classes `CityBotGroq` e `CityBotGemini` gerenciam o fluxo de mensagens e persistência.
+2. **GUI (`src/gui`)**: Responsável exclusiva pela apresentação visual e eventos do Tkinter.
+3. **Utils (`src/utils`)**: Contém funções puras para extração de dados (OCR, Web, YouTube, PDF), facilitando a reutilização e testes.
 
 ---
 
@@ -106,7 +118,7 @@ pyperclip
 pillow
 pypdf
 yt-dlp ou dependências do YoutubeLoader
-````
+```
 
 Requisitos externos:
 
@@ -151,7 +163,6 @@ O arquivo `citybot.db` é criado automaticamente, e as tabelas são:
   * `user_id`
   * `name`
   * `preferences`
-
 * `conversations`
 
   * `id`
@@ -164,83 +175,43 @@ Há também um método `limpar_banco` que remove todas as tabelas, caso seja nec
 
 ## Como executar
 
-A estrutura exata de arquivos pode variar, então ajuste o nome do arquivo principal conforme o seu projeto.
-Os exemplos abaixo assumem que o arquivo com a classe e o menu CLI é `citybot.py` e que a interface gráfica está no mesmo arquivo ou em um arquivo associado.
+O CityBot agora possui um ponto de entrada único: `main.py`.
 
-### 1. Clonar o repositório
+### 1. Instalação básica
 
 ```bash
 git clone https://github.com/cidade-felipe/citybot.git
 cd citybot
-```
-
-### 2. Criar ambiente virtual (opcional)
-
-```bash
-python -m venv .venv
-source .venv/bin/activate   # Linux / macOS
-.\.venv\Scripts\activate    # Windows
-```
-
-### 3. Instalar dependências
-
-Se você tiver um `requirements.txt`, use:
-
-```bash
 pip install -r requirements.txt
 ```
 
-Caso ainda não tenha, instale as principais bibliotecas:
+### 2. Configurar o `.env`
+
+Certifique-se de configurar suas chaves no arquivo `.env` (conforme seção abaixo).
+
+### 3. Execução
+
+Você pode escolher o provedor de IA e o modo de interface:
+
+#### Interface Gráfica (Padrão)
 
 ```bash
-pip install python-dotenv langchain langchain-groq langchain-community pytesseract opencv-python python-docx langdetect pyperclip pillow
+# Iniciar com Gemini (Padrão)
+python main.py
+
+# Iniciar interface com Groq
+python main.py --provider groq
 ```
 
-### 4. Executar o CityBot no terminal (CLI)
-
-Para usar com o modelo da Groq:
+#### Linha de Comando (CLI)
 
 ```bash
-python citybot_groq.py
+# Iniciar CLI com Gemini
+python main.py --mode cli
+
+# Iniciar CLI com Groq
+python main.py --provider groq --mode cli
 ```
-
-Para usar com o modelo do Google Gemini:
-
-```bash
-python citybot_gemini.py
-```
-
-O menu oferece opções como:
-
-1. Conversar
-2. Informações sobre um site
-3. Informações sobre um vídeo do YouTube
-4. Informações sobre um PDF
-5. OCR de imagem
-6. Sair
-
-### 5. Executar o CityBot com interface gráfica (Tkinter)
-
-A interface gráfica possui scripts dedicados para cada provedor de IA na pasta `gui`:
-
-Para rodar a interface usando o modelo da Groq:
-
-```bash
-python gui/gui_groq.py
-```
-
-Para rodar a interface usando o modelo do Google Gemini:
-
-```bash
-python gui/gui_gemini.py
-```
-
-A interface de chat permite:
-
-* Escrever mensagens para o CityBot
-* Carregar PDF, site e imagem por botões
-* Mostrar respostas formatadas em balões coloridos
-* Rolagem automática das mensagens
 
 ---
 
@@ -250,16 +221,12 @@ Resumo dos fluxos principais:
 
 * Chat livre:
   O usuário conversa diretamente com o CityBot, que responde usando o modelo configurado.
-
 * PDF:
   O bot carrega o PDF, extrai o texto e passa a responder com base nesse conteúdo.
-
 * Site:
   O bot faz o scrape da página indicada e usa o texto carregado como contexto da conversa.
-
 * Vídeo do YouTube:
   O bot carrega a transcrição do vídeo e responde conforme as perguntas sobre o conteúdo.
-
 * Imagem (OCR):
   O bot detecta o texto na imagem, salva em `.docx` e `.txt` e pode responder sobre esse conteúdo.
 
@@ -271,7 +238,6 @@ Algumas ideias de evolução para o projeto:
 
 * Adicionar seleção de modelos direto na interface
 * Criar perfis de usuário com preferências reais
-* Organizar o projeto em pacotes (`src/`) para facilitar manutenção
 * Adicionar logs mais detalhados de erros
 * Integrar com outras fontes, como arquivos `.docx` diretos ou bancos externos
 

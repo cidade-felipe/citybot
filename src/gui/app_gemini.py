@@ -8,31 +8,17 @@ import os
 import sys
 from PIL import Image, ImageTk
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Adiciona a raiz do projeto ao sys.path para permitir imports do pacote src
+root_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if root_path not in sys.path:
+    sys.path.append(root_path)
 
-try:
-   from citybot_groq import CityBot
-except ImportError:
-   class CityBot:
-      def __init__(self):
-         self.memory = None
-      def carrega_site(self, url):
-         return f"Conteúdo simulado do site: {url}"
-      def carrega_video(self, url):
-         return f"Transcrição simulada do vídeo: {url}"
-      def carrega_pdf(self, path):
-         return f"Conteúdo simulado do PDF: {path}"
-      def carrega_imagem_ocr(self, path, nome):
-         return f"Texto OCR simulado da imagem: {nome}"
-      def resposta_bot(self, mensagens, doc=''):
-         return f"Resposta simulada do bot para: {mensagens[-1][1] if mensagens else '...'}"
-      def save_conversation(self, user_msg, bot_resp):
-         pass
+from src.core.bot_gemini import CityBotGemini
 
 class ModernCityBotGUI:
    def __init__(self, root):
       self.root = root
-      self.root.title("CityBot - Assistente Inteligente")
+      self.root.title("CityBot Gemini - Assistente Inteligente")
       self.root.geometry("1400x850")
       self.root.minsize(1200, 700)
       self.root.configure(bg="#0f0f0f")
@@ -53,7 +39,7 @@ class ModernCityBotGUI:
       
       self.setup_styles()
       
-      self.bot = CityBot()
+      self.bot = CityBotGemini()
       self.current_context = ""
       self.conversation_history = []
       self.is_processing = False
@@ -84,7 +70,6 @@ class ModernCityBotGUI:
       self.root.grid_rowconfigure(0, weight=1)
       
    def create_sidebar(self):
-
       self.sidebar = tk.Frame(self.root, bg=self.colors['bg_secondary'], width=320)
       self.sidebar.grid(row=0, column=0, sticky="nsew", padx=(0, 2))
       self.sidebar.grid_propagate(False)
@@ -112,24 +97,21 @@ class ModernCityBotGUI:
       header = tk.Frame(self.sidebar_content, bg=self.colors['bg_secondary'], height=100)
       header.pack(fill="x", padx=20, pady=25)
       header.pack_propagate(False)
-      logo_img = Image.open("logo.png")
-      logo_img = logo_img.resize((60, 60), Image.Resampling.LANCZOS)
-      logo_tk = ImageTk.PhotoImage(logo_img)
-
-      logo_label = tk.Label(header,image=logo_tk, bg=self.colors['bg_secondary'])
-      logo_label.pack(side="left", padx=(0, 15))
-
-      logo_label.image = logo_tk
+      
+      # Busca o logo na raiz do projeto
+      logo_path = os.path.join(root_path, "logo.png")
+      if os.path.exists(logo_path):
+          logo_img = Image.open(logo_path)
+          logo_img.thumbnail((520, 160), Image.Resampling.LANCZOS)
+          logo_tk = ImageTk.PhotoImage(logo_img)
+          logo_label = tk.Label(header, image=logo_tk, bg=self.colors['bg_secondary'])
+          logo_label.pack(expand=True)
+          logo_label.image = logo_tk
+      else:
+          tk.Label(header, text="CityBot", font=self.font_title, 
+                   bg=self.colors['bg_secondary'], fg=self.colors['accent']).pack(expand=True)
       
       self.pulse_animation()
-      
-      title_frame = tk.Frame(header, bg=self.colors['bg_secondary'])
-      title_frame.pack(side="left", fill="y")
-      
-      tk.Label(title_frame, text="CityBot", font=self.font_title, 
-               bg=self.colors['bg_secondary'], fg=self.colors['text_primary']).pack(anchor="w")
-      tk.Label(title_frame, text="Assistente IA", font=self.font_small, 
-               bg=self.colors['bg_secondary'], fg=self.colors['accent']).pack(anchor="w")
       
       tk.Frame(self.sidebar_content, bg=self.colors['border'], height=2).pack(fill="x", padx=20, pady=15)
       
@@ -139,7 +121,6 @@ class ModernCityBotGUI:
                            fg=self.colors['text_secondary'])
       menu_label.pack(anchor="w", padx=25, pady=(15, 10))
       
-      # Botões do menu
       self.menu_buttons = []
       menu_items = [
          ("💬  Chat Livre", self.set_chat_mode),
@@ -305,7 +286,6 @@ class ModernCityBotGUI:
                                  fg=self.colors['success'])
       self.status_label.pack(side="left", padx=25)
       
-      # Hora
       self.time_label = tk.Label(self.status_bar, text="", 
                                  font=self.font_small,
                                  bg=self.colors['bg_secondary'], 
@@ -319,18 +299,15 @@ class ModernCityBotGUI:
       self.root.after(1000, self.update_time)
       
    def pulse_animation(self):
-      """Animação de pulso no logo"""
       def animate():
          with contextlib.suppress(Exception):
             for i in range(10):
                scale = 1 + (i * 0.05)
                self.root.after(50)
             self.root.after(2000, animate)
-
       animate()
       
    def animate_startup(self):
-      """Animação de entrada"""
       pass
       
    def on_frame_configure(self, event=None):
@@ -343,9 +320,7 @@ class ModernCityBotGUI:
       self.chat_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
       
    def add_message_bubble(self, text, is_user=True, animate=True):
-      """Adiciona uma bolha de mensagem moderna"""
-      bubble_container = tk.Frame(self.messages_frame, 
-                                 bg=self.colors['bg_primary'])
+      bubble_container = tk.Frame(self.messages_frame, bg=self.colors['bg_primary'])
       bubble_container.pack(fill="x", padx=30, pady=8)
       
       if is_user:
@@ -370,10 +345,8 @@ class ModernCityBotGUI:
       msg_label.pack()
       
       time_str = datetime.now().strftime("%H:%M:%S")
-      time_label = tk.Label(bubble_container, text=time_str, 
-                           font=self.font_small,
-                           bg=self.colors['bg_primary'], 
-                           fg=self.colors['text_secondary'])
+      time_label = tk.Label(bubble_container, text=time_str, font=self.font_small,
+                           bg=self.colors['bg_primary'], fg=self.colors['text_secondary'])
       time_label.grid(row=1, column=col, sticky=anchor, pady=(5, 0))
       
       if not is_user and animate:
@@ -382,58 +355,38 @@ class ModernCityBotGUI:
       
       self.messages_frame.update_idletasks()
       self.chat_canvas.yview_moveto(1.0)
-      
       return bubble_container
       
    def animate_typing(self, label, text, index=0):
-      """Animação de digitação"""
       if index < len(text):
          label.config(text=text[:index+1])
          self.root.after(15, lambda: self.animate_typing(label, text, index+1))
          
    def add_system_message(self, title, message):
-      """Adiciona mensagem de sistema centralizada"""
-      container = tk.Frame(self.messages_frame, 
-                           bg=self.colors['bg_primary'])
+      container = tk.Frame(self.messages_frame, bg=self.colors['bg_primary'])
       container.pack(fill="x", padx=30, pady=30)
-      
       container.grid_columnconfigure(0, weight=1)
       
-      inner = tk.Frame(container, bg=self.colors['bg_secondary'], 
-                     padx=40, pady=25)
+      inner = tk.Frame(container, bg=self.colors['bg_secondary'], padx=40, pady=25)
       inner.grid(row=0, column=0)
       
-      tk.Label(inner, text=title, font=self.font_title, 
-               bg=self.colors['bg_secondary'],
-               fg=self.colors['accent']).pack()
-      tk.Label(inner, text=message, font=self.font_text, 
-               bg=self.colors['bg_secondary'],
-               fg=self.colors['text_secondary'], 
-               wraplength=600).pack(pady=(15, 0))
+      tk.Label(inner, text=title, font=self.font_title, bg=self.colors['bg_secondary'], fg=self.colors['accent']).pack()
+      tk.Label(inner, text=message, font=self.font_text, bg=self.colors['bg_secondary'], fg=self.colors['text_secondary'], wraplength=600).pack(pady=(15, 0))
       
       self.messages_frame.update_idletasks()
       self.chat_canvas.yview_moveto(1.0)
       
    def add_loading_indicator(self):
-      """Adiciona indicador de carregamento"""
-      self.loading_frame = tk.Frame(self.messages_frame, 
-                                    bg=self.colors['bg_primary'])
+      self.loading_frame = tk.Frame(self.messages_frame, bg=self.colors['bg_primary'])
       self.loading_frame.pack(fill="x", padx=30, pady=15)
-      
-      dots = tk.Label(self.loading_frame, text="● ● ●", 
-                     font=("Segoe UI", 24, "bold"),
-                     bg=self.colors['bg_primary'], 
-                     fg=self.colors['accent'])
+      dots = tk.Label(self.loading_frame, text="● ● ●", font=("Segoe UI", 24, "bold"), bg=self.colors['bg_primary'], fg=self.colors['accent'])
       dots.pack()
       
       def animate_dots(count=0):
          if hasattr(self, 'loading_frame') and self.loading_frame.winfo_exists():
-               colors = [self.colors['accent'] if i == count % 3 
-                        else self.colors['bg_tertiary'] 
-                        for i in range(3)]
+               colors = [self.colors['accent'] if i == count % 3 else self.colors['bg_tertiary'] for i in range(3)]
                dots.config(fg=colors[0])
                self.root.after(400, lambda: animate_dots(count + 1))
-      
       animate_dots()
       self.messages_frame.update_idletasks()
       self.chat_canvas.yview_moveto(1.0)
@@ -444,35 +397,24 @@ class ModernCityBotGUI:
          delattr(self, 'loading_frame')
          
    def send_message(self):
-      if self.is_processing:
-         return
-         
+      if self.is_processing: return
       message = self.input_text.get("1.0", "end-1c").strip()
-      if not message or message == "Digite sua mensagem...":
-         return
-         
+      if not message or message == "Digite sua mensagem...": return
       self.input_text.delete("1.0", "end")
       self.input_text.insert("1.0", "Digite sua mensagem...")
       self.input_text.config(fg=self.colors['text_secondary'])
-      
       self.add_message_bubble(message, is_user=True)
-      
       self.is_processing = True
-      self.status_label.config(text="●  Processando...", 
-                              fg=self.colors['warning'])
+      self.status_label.config(text="●  Processando...", fg=self.colors['warning'])
       self.add_loading_indicator()
-      
-      thread = threading.Thread(target=self.process_message, 
-                              args=(message,))
+      thread = threading.Thread(target=self.process_message, args=(message,))
       thread.daemon = True
       thread.start()
       
    def process_message(self, message):
       try:
          messages = [("user", msg) for msg in self.conversation_history] + [("user", message)]
-         
          response = self.bot.resposta_bot(messages, self.current_context)
-         
          self.root.after(0, lambda: self.show_response(response, message))
       except Exception as e:
          self.root.after(0, lambda: self.show_error(str(e)))
@@ -480,178 +422,110 @@ class ModernCityBotGUI:
    def show_response(self, response, user_message):
       self.remove_loading_indicator()
       self.add_message_bubble(response, is_user=False)
-      
       self.conversation_history.extend([user_message, response])
       self.bot.save_conversation(user_message, response)
-      
       self.is_processing = False
       self.status_label.config(text="●  Pronto", fg=self.colors['success'])
       
    def show_error(self, error_msg):
       self.remove_loading_indicator()
-      self.add_message_bubble(f"❌ Erro: {error_msg}", 
-                              is_user=False, animate=False)
+      self.add_message_bubble(f"❌ Erro: {error_msg}", is_user=False, animate=False)
       self.is_processing = False
       self.status_label.config(text="●  Erro", fg=self.colors['error'])
       
    def set_chat_mode(self):
       self.current_context = ""
       self.context_label.config(text="Chat Livre")
-      self.add_system_message("💬 Modo Chat Livre", 
-                              "Pergunte o que quiser. Estou pronto para conversar!")
+      self.add_system_message("💬 Modo Chat Livre", "Pergunte o que quiser. Estou pronto para conversar!")
       
    def load_website(self):
-      self.show_input_dialog("Carregar Site", 
-                           "Digite a URL do site:", 
-                           self.process_website)
+      self.show_input_dialog("Carregar Site", "Digite a URL do site:", self.process_website)
       
    def process_website(self, url):
-      if not url:
-         return
-      self.status_label.config(text="●  Carregando site...", 
-                              fg=self.colors['warning'])
-
+      if not url: return
+      self.status_label.config(text="●  Carregando site...", fg=self.colors['warning'])
       def load():
          try:
             content = self.bot.carrega_site(url)
             self.current_context = content
             self.root.after(0, lambda: self.on_context_loaded("Site", f"{url[:50]}..."))
          except Exception as e:
-               self.root.after(0, lambda: messagebox.showerror("Erro", str(e)))
-
+            self.root.after(0, lambda: messagebox.showerror("Erro", str(e)))
       threading.Thread(target=load, daemon=True).start()
       
    def load_video(self):
-      self.show_input_dialog("Carregar Vídeo", 
-                           "Digite a URL do YouTube:", 
-                           self.process_video)
+      self.show_input_dialog("Carregar Vídeo", "Digite a URL do YouTube:", self.process_video)
       
    def process_video(self, url):
-      if not url:
-         return
-      self.status_label.config(text="●  Carregando vídeo...", 
-                              fg=self.colors['warning'])
-      
+      if not url: return
+      self.status_label.config(text="●  Carregando vídeo...", fg=self.colors['warning'])
       def load():
          try:
-               content = self.bot.carrega_video(url)
-               self.current_context = content
-               self.root.after(0, lambda: self.on_context_loaded("Vídeo", url))
+            content = self.bot.carrega_video(url)
+            self.current_context = content
+            self.root.after(0, lambda: self.on_context_loaded("Vídeo", url))
          except Exception as e:
-               self.root.after(0, lambda: messagebox.showerror("Erro", str(e)))
-               
+            self.root.after(0, lambda: messagebox.showerror("Erro", str(e)))
       threading.Thread(target=load, daemon=True).start()
       
    def load_pdf(self):
-      filename = filedialog.askopenfilename(
-         title="Selecionar PDF",
-         filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")]
-      )
+      filename = filedialog.askopenfilename(title="Selecionar PDF", filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")])
       if filename:
-         self.status_label.config(text="●  Carregando PDF...", 
-                                 fg=self.colors['warning'])
-         
+         self.status_label.config(text="●  Carregando PDF...", fg=self.colors['warning'])
          def load():
-               try:
-                  content = self.bot.carrega_pdf(filename)
-                  self.current_context = content
-                  self.root.after(0, lambda: self.on_context_loaded(
-                     "PDF", 
-                     os.path.basename(filename)))
-               except Exception as e:
-                  self.root.after(0, lambda: messagebox.showerror("Erro", str(e)))
-                  
+            try:
+               content = self.bot.carrega_pdf(filename)
+               self.current_context = content
+               self.root.after(0, lambda: self.on_context_loaded("PDF", os.path.basename(filename)))
+            except Exception as e:
+               self.root.after(0, lambda: messagebox.showerror("Erro", str(e)))
          threading.Thread(target=load, daemon=True).start()
          
    def load_image_ocr(self):
-      filename = filedialog.askopenfilename(
-         title="Selecionar Imagem",
-         filetypes=[("Image files", "*.png *.jpg *.jpeg *.bmp *.tiff"), 
-                     ("All files", "*.*")]
-      )
+      filename = filedialog.askopenfilename(title="Selecionar Imagem", filetypes=[("Image files", "*.png *.jpg *.jpeg *.bmp *.tiff"), ("All files", "*.*")])
       if filename:
          nome = os.path.splitext(os.path.basename(filename))[0]
-         self.status_label.config(text="●  Processando OCR...", 
-                                 fg=self.colors['warning'])
-         
+         self.status_label.config(text="●  Processando OCR...", fg=self.colors['warning'])
          def load():
-               try:
-                  content = self.bot.carrega_imagem_ocr(filename, nome)
-                  self.current_context = content
-                  self.root.after(0, lambda: self.on_context_loaded(
-                     "OCR", 
-                     os.path.basename(filename)))
-               except Exception as e:
-                  self.root.after(0, lambda: messagebox.showerror("Erro", str(e)))
-                  
+            try:
+               content = self.bot.carrega_imagem_ocr(filename, nome)
+               self.current_context = content
+               self.root.after(0, lambda: self.on_context_loaded("OCR", os.path.basename(filename)))
+            except Exception as e:
+               self.root.after(0, lambda: messagebox.showerror("Erro", str(e)))
          threading.Thread(target=load, daemon=True).start()
          
    def on_context_loaded(self, tipo, nome):
       self.context_label.config(text=f"{tipo}: {nome}")
-      self.add_system_message(f"✅ {tipo} Carregado", 
-                              f"Agora você pode fazer perguntas sobre: {nome}")
+      self.add_system_message(f"✅ {tipo} Carregado", f"Agora você pode fazer perguntas sobre: {nome}")
       self.status_label.config(text="●  Pronto", fg=self.colors['success'])
       
    def clear_chat(self):
-      for widget in self.messages_frame.winfo_children():
-         widget.destroy()
+      for widget in self.messages_frame.winfo_children(): widget.destroy()
       self.conversation_history = []
-      self.add_system_message("🗑️ Conversa Limpa", 
-                              "O histórico foi apagado. Comece uma nova conversa!")
+      self.add_system_message("🗑️ Conversa Limpa", "O histórico foi apagado. Comece uma nova conversa!")
       
    def show_input_dialog(self, title, prompt, callback):
-      """Diálogo de input moderno"""
       dialog = tk.Toplevel(self.root)
       dialog.title(title)
       dialog.geometry("550x220")
       dialog.configure(bg=self.colors['bg_secondary'])
       dialog.transient(self.root)
       dialog.grab_set()
-      
-      # Centralizar
       dialog.update_idletasks()
-      x = (dialog.winfo_screenwidth() // 2) - (275)
-      y = (dialog.winfo_screenheight() // 2) - (110)
+      x = (dialog.winfo_screenwidth() // 2) - 275
+      y = (dialog.winfo_screenheight() // 2) - 110
       dialog.geometry(f"+{x}+{y}")
-      
-      tk.Label(dialog, text=prompt, font=self.font_text,
-               bg=self.colors['bg_secondary'], 
-               fg=self.colors['text_primary']).pack(pady=25)
-      
-      entry = tk.Entry(dialog, font=self.font_text, width=45,
-                     bg=self.colors['bg_tertiary'], 
-                     fg=self.colors['text_primary'],
-                     insertbackground=self.colors['accent'], 
-                     bd=0, highlightthickness=1,
-                     highlightbackground=self.colors['border'])
+      tk.Label(dialog, text=prompt, font=self.font_text, bg=self.colors['bg_secondary'], fg=self.colors['text_primary']).pack(pady=25)
+      entry = tk.Entry(dialog, font=self.font_text, width=45, bg=self.colors['bg_tertiary'], fg=self.colors['text_primary'], insertbackground=self.colors['accent'], bd=0, highlightthickness=1, highlightbackground=self.colors['border'])
       entry.pack(pady=10, ipady=8)
       entry.focus()
-      
       def on_ok():
-         value = entry.get()
-         dialog.destroy()
-         callback(value)
-         
-      def on_cancel():
-         dialog.destroy()
-         
+         value = entry.get(); dialog.destroy(); callback(value)
       btn_frame = tk.Frame(dialog, bg=self.colors['bg_secondary'])
       btn_frame.pack(pady=25)
-      
-      tk.Button(btn_frame, text="Cancelar", command=on_cancel,
-               bg=self.colors['bg_tertiary'], 
-               fg=self.colors['text_primary'],
-               activebackground=self.colors['border'], 
-               bd=0, padx=25, pady=10,
-               font=self.font_text).pack(side="left", padx=5)
-      
-      tk.Button(btn_frame, text="OK", command=on_ok,
-               bg=self.colors['accent'], 
-               fg=self.colors['bg_primary'],
-               activebackground=self.colors['accent_secondary'], 
-               bd=0, padx=35, pady=10,
-               font=self.font_text).pack(side="left", padx=5)
-      
+      tk.Button(btn_frame, text="Cancelar", command=dialog.destroy, bg=self.colors['bg_tertiary'], fg=self.colors['text_primary'], activebackground=self.colors['border'], bd=0, padx=25, pady=10, font=self.font_text).pack(side="left", padx=5)
+      tk.Button(btn_frame, text="OK", command=on_ok, bg=self.colors['accent'], fg=self.colors['bg_primary'], activebackground=self.colors['accent_secondary'], bd=0, padx=35, pady=10, font=self.font_text).pack(side="left", padx=5)
       entry.bind("<Return>", lambda e: on_ok())
 
 if __name__ == "__main__":

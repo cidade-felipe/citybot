@@ -1,59 +1,45 @@
 import os
-import sqlite3
-from pathlib import Path
-import cv2
 import pyperclip
-import pytesseract
-from docx import Document
 from dotenv import load_dotenv
+
 from langchain.memory import ConversationBufferWindowMemory
 from langchain.prompts import ChatPromptTemplate
-from langchain_community.document_loaders import PyPDFLoader, WebBaseLoader, YoutubeLoader
 from langchain_groq import ChatGroq
-from langdetect import LangDetectException, detect
 
-class CityBot:
+from src.core.database import CityBotDatabase
+from src.utils.scrapers import carrega_site, carrega_video
+from src.utils.pdf_reader import carrega_pdf
+from src.utils.ocr import carrega_imagem_ocr_tesseract
+from src.utils.file_writer import salvar_texto
+
+class CityBotGroq:
     def __init__(self):
         load_dotenv()
-        self.api_key = os.getenv('GROQ_API_KEY')
         self.api_model = os.getenv('GROQ_API_MODEL')
-        self.conexao = sqlite3.connect('citybot.db')
-        self.create_table()
+        
+        self.db = CityBotDatabase()
         self.memory = ConversationBufferWindowMemory(k=1000000)
 
-    def create_table(self):
-        with self.conexao:
-            self.conexao.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY,
-                name TEXT,
-                preferences TEXT
-            );
-            """)
+    def carrega_site(self, url_site):
+        return carrega_site(url_site)
 
-            self.conexao.execute("""
-            CREATE TABLE IF NOT EXISTS conversations (
-                id INTEGER PRIMARY KEY,
-                user_message TEXT,
-                assistant_response TEXT
-            );
-            """)
+    def carrega_video(self, url_video):
+        return carrega_video(url_video)
 
-    def save_user(self, name, preferences):
-        with self.conexao:
-            self.conexao.execute("INSERT INTO users (name, preferences) VALUES (?, ?);", (name, preferences))
+    def carrega_pdf(self, caminho):
+        return carrega_pdf(caminho)
 
-    def load_user(self, name):
-        with self.conexao:
-            return self.conexao.execute("SELECT * FROM users WHERE name = ?;", (name,)).fetchone()
+    def carrega_imagem_ocr(self, caminho, nome):
+        texto_final = carrega_imagem_ocr_tesseract(caminho)
+        if texto_final:
+            salvar_texto(texto_final, nome)
+        return texto_final
 
     def save_conversation(self, user_message, assistant_response):
-        with self.conexao:
-            self.conexao.execute("INSERT INTO conversations (user_message, assistant_response) VALUES (?, ?);", (user_message, assistant_response))
+        self.db.save_conversation(user_message, assistant_response)
 
     def load_conversations(self):
-        with self.conexao:
-            return self.conexao.execute("SELECT user_message, assistant_response FROM conversations;").fetchall()
+        return self.db.load_conversations()
 
     def chat(self):
         return ChatGroq(model=self.api_model)
@@ -70,146 +56,8 @@ class CityBot:
         chain = template | self.chat()
         return chain.invoke({'informacoes': informacoes}).content
 
-    def carrega_site(self, url_site):
-        try:
-            loader = WebBaseLoader(url_site)
-            return ''.join(doc.page_content for doc in loader.load())
-        except Exception as e:
-            print(f'Erro ao carregar o site: {e}')
-            return ''
-
-    def carrega_video(self, url_video):
-        try:
-            loader = YoutubeLoader.from_youtube_url(url_video)
-            return ''.join(doc.page_content for doc in loader.load())
-        except Exception as e:
-            print(f'Erro ao carregar o vídeo: {e}')
-            return ''
-
-    def carrega_pdf(self, caminho):
-        try:
-            if not os.path.exists(caminho):
-                raise FileNotFoundError(f'Arquivo não encontrado: {caminho}')
-            loader = PyPDFLoader(caminho)
-            return ''.join(doc.page_content for doc in loader.load())
-        except Exception as e:
-            print(f'Erro ao carregar o PDF: {e}')
-            return ''
-
-    def carrega_imagem_ocr(self, caminho, nome):
-        try:
-            if not os.path.exists(caminho):
-                raise FileNotFoundError(f'Arquivo não encontrado: {caminho}')
-            imagem = cv2.imread(caminho)
-            imagem_cinza = cv2.cvtColor(imagem, cv2.COLOR_BGR2GRAY)
-            imagem_tratada = cv2.threshold(imagem_cinza, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-            texto_bruto = pytesseract.image_to_string(imagem_tratada, config='--psm 6')
-            try:
-                idioma = detect(texto_bruto)
-            except LangDetectException:
-                idioma = None
-            map_idioma = {
-                'pt': 'por',
-                'en': 'eng',
-                'es': 'spa',
-                'fr': 'fra',
-                'de': 'deu',
-                'it': 'ita',
-                'ru': 'rus',
-                'ja': 'jpn',
-                'zh-cn': 'chi_sim',
-                'zh-tw': 'chi_tra',
-                'ko': 'kor',
-                'ar': 'ara',
-                'nl': 'nld',
-                'pl': 'pol',
-                'tr': 'tur',
-                'da': 'dan',
-                'fi': 'fin',
-                'sv': 'swe',
-                'no': 'nor',
-            }
-            idioma_tesseract = map_idioma.get(idioma, 'por')
-            if idioma_tesseract:
-                texto_final = pytesseract.image_to_string(imagem_tratada, lang=idioma_tesseract, config='--psm 6')
-            else:
-                texto_final = texto_bruto
-            self.salvar_texto(texto_final, nome)
-            return texto_final
-        except Exception as e:
-            print(f'Erro ao carregar a imagem: {e}')
-            return ''
-        
-    def salvar_texto(self,texto, nome):
-        try:
-            documento = Document()
-            documento.add_paragraph(texto)
-            documento.save(f'{nome}.docx')
-            with open(f'{nome}.txt', 'w', encoding='utf-8') as file:
-                file.write(texto)
-            return texto
-        except Exception as e:
-            print(f'Erro ao salvar a imagem: {e}')
-            return ''
-
     def limpar_banco(self):
-        cursor = self.conexao.cursor()
-
-        # Obter lista de tabelas existentes
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        tabelas = cursor.fetchall()
-
-        # Deletar todas as tabelas
-        for (tabela,) in tabelas:
-            cursor.execute(f"DROP TABLE IF EXISTS {tabela};")
-
-        self.conexao.commit()
-
-    def conversar(self, pergunta, contexto=''):
-        pergunta = (pergunta or '').strip()
-        if not pergunta:
-            raise ValueError('A pergunta não pode estar vazia.')
-        mensagens = list(self.load_conversations())
-        mensagens.append(('user', pergunta))
-        resposta = self.resposta_bot(mensagens, contexto)
-        self.memory.save_context({'input': pergunta}, {'output': resposta})
-        self.save_conversation(pergunta, resposta)
-        return resposta
-
-    def pastas_padrao(self):
-        home = Path.home()
-        candidatos = [
-            home / 'Desktop',
-            home / 'Documents',
-            home / 'Downloads',
-            home / 'OneDrive',
-        ]
-        pastas = []
-        pastas.extend(pasta for pasta in candidatos if pasta.exists())
-        return pastas
-
-    def buscar_arquivos(self, termo='', extensoes=None, limite=100, diretorios=None):
-        extensoes = [ext.lower() for ext in (extensoes or []) if ext]
-        termo = (termo or '').strip().lower()
-        diretorios = diretorios or self.pastas_padrao()
-        resultados = []
-
-        for base in diretorios:
-            if not Path(base).exists():
-                continue
-            for raiz, _, arquivos in os.walk(base):
-                for arquivo in arquivos:
-                    nome = arquivo.lower()
-                    if termo and termo not in nome:
-                        continue
-                    if extensoes and Path(arquivo).suffix.lower() not in extensoes:
-                        continue
-                    caminho = str(Path(raiz) / arquivo)
-                    resultados.append(caminho)
-                    if len(resultados) >= limite:
-                        return sorted(resultados)
-        return sorted(resultados)
-
+        self.db.limpar_banco()
 
     def menu(self):
         memory = self.memory
@@ -219,7 +67,7 @@ class CityBot:
         nova_informacao = ''
         mensagens = list(self.load_conversations())
         while True:
-            opcao = input('Escolha uma opção: ')
+            opcao = input('\nEscolha uma opção: ')
             if opcao not in '123456':
                 print('Opção inválida!')
             else:
@@ -235,6 +83,7 @@ class CityBot:
                             if pergunta.lower().strip() == 'sair':
                                 print('Saindo...')
                                 exit()
+                            if not pergunta.strip(): continue
                             mensagens.append(('user', pergunta))
                             resposta = self.resposta_bot(mensagens, nova_informacao)
                             mensagens.append(('assistant', resposta))
@@ -256,6 +105,7 @@ class CityBot:
                                     exit()
                                 pergunta.append(linha)
                             pergunta = '\n'.join(pergunta).strip()
+                            if not pergunta: continue
                             mensagens.append(('user', pergunta))
                             resposta = self.resposta_bot(mensagens, nova_informacao)
                             mensagens.append(('assistant', resposta))
@@ -276,6 +126,7 @@ class CityBot:
                         if pergunta.lower().strip() == 'sair':
                             print('Saindo...')
                             exit()
+                        if not pergunta.strip(): continue
                         mensagens.append(('user', pergunta))
                         resposta = self.resposta_bot(mensagens, nova_informacao)
                         mensagens.append(('assistant', resposta))
@@ -295,6 +146,7 @@ class CityBot:
                         if pergunta.lower().strip() == 'sair':
                             print('Saindo...')
                             exit()
+                        if not pergunta.strip(): continue
                         mensagens.append(('user', pergunta))
                         resposta = self.resposta_bot(mensagens, nova_informacao)
                         mensagens.append(('assistant', resposta))
@@ -314,6 +166,7 @@ class CityBot:
                         if pergunta.lower().strip() == 'sair':
                             print('Saindo...')
                             exit()
+                        if not pergunta.strip(): continue
                         mensagens.append(('user', pergunta))
                         resposta = self.resposta_bot(mensagens, nova_informacao)
                         mensagens.append(('assistant', resposta))
@@ -334,6 +187,7 @@ class CityBot:
                         if pergunta.lower().strip() == 'sair':
                             print('Saindo...')
                             exit()
+                        if not pergunta.strip(): continue
                         mensagens.append(('user', pergunta))
                         resposta = self.resposta_bot(mensagens, nova_informacao)
                         mensagens.append(('assistant', resposta))
@@ -344,16 +198,3 @@ class CityBot:
                 elif opcao == '6':
                     print('Saindo...')
                     break
-
-if __name__ == '__main__':
-    city_bot = CityBot()
-    city_bot.menu()
-    # llama-3.3-70b-versatile
-    # llama-3.1-8b-instant
-    # llama3-70b-8192
-    # llama3-8b-8192
-    # gemma2-9b-it
-    # llama-3.2-1b-preview
-    # llama-3.2-3b-preview
-    # llama-3.2-11b-vision-preview
-    # llama-3.2-90b-vision-preview
