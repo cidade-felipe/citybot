@@ -11,7 +11,7 @@ from PIL import Image, ImageTk
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 try:
-   from citybot import CityBot
+   from citybot_groq import CityBot
 except ImportError:
    class CityBot:
       def __init__(self):
