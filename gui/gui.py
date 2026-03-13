@@ -8,13 +8,11 @@ import os
 import sys
 from PIL import Image, ImageTk
 
-# Adicionar o diretório atual ao path para importar o CityBot
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 try:
    from citybot import CityBot
 except ImportError:
-   # Classe mock para testes visuais
    class CityBot:
       def __init__(self):
          self.memory = None
@@ -39,7 +37,6 @@ class ModernCityBotGUI:
       self.root.minsize(1200, 700)
       self.root.configure(bg="#0f0f0f")
       
-      # Cores do tema cyber/dark moderno
       self.colors = {
          'bg_primary': "#0f0f0f",
          'bg_secondary': "#1a1a1a",
@@ -54,34 +51,28 @@ class ModernCityBotGUI:
          'border': "#333333"
       }
       
-      # Configurar estilos
       self.setup_styles()
       
-      # Inicializar bot
       self.bot = CityBot()
       self.current_context = ""
       self.conversation_history = []
       self.is_processing = False
       
-      # Criar interface
       self.create_layout()
       self.create_sidebar()
       self.create_chat_area()
       self.create_input_area()
       self.create_status_bar()
       
-      # Bindings
       self.root.bind("<Return>", lambda e: None if e.state & 0x1 else self.send_message())
       self.root.bind("<Shift-Return>", lambda e: None)
       
-      # Animação inicial
       self.animate_startup()
       
    def setup_styles(self):
       style = ttk.Style()
       style.theme_use('clam')
       
-      # Configurar fontes
       self.font_title = tkfont.Font(family="Segoe UI", size=16, weight="bold")
       self.font_text = tkfont.Font(family="Segoe UI", size=11)
       self.font_mono = tkfont.Font(family="Consolas", size=10)
@@ -89,7 +80,6 @@ class ModernCityBotGUI:
       self.font_menu = tkfont.Font(family="Segoe UI", size=11)
       
    def create_layout(self):
-      # Grid principal
       self.root.grid_columnconfigure(1, weight=1)
       self.root.grid_rowconfigure(0, weight=1)
       
@@ -100,7 +90,6 @@ class ModernCityBotGUI:
       self.sidebar.grid_propagate(False)
       self.sidebar.pack_propagate(False)
       
-      # Canvas com scrollbar para sidebar (caso seja necessário scroll)
       sidebar_canvas = tk.Canvas(self.sidebar, bg=self.colors['bg_secondary'], 
                                  highlightthickness=0, width=320)
       sidebar_canvas.pack(side="left", fill="both", expand=True)
@@ -111,7 +100,6 @@ class ModernCityBotGUI:
       
       sidebar_canvas.configure(yscrollcommand=scrollbar.set)
       
-      # Frame interno para conteúdo
       self.sidebar_content = tk.Frame(sidebar_canvas, bg=self.colors['bg_secondary'], width=300)
       self.sidebar_window = sidebar_canvas.create_window((0, 0), 
                                                          window=self.sidebar_content,
@@ -121,25 +109,20 @@ class ModernCityBotGUI:
                               lambda e: sidebar_canvas.configure(
                                     scrollregion=sidebar_canvas.bbox("all")))
       
-      # Logo/Header
       header = tk.Frame(self.sidebar_content, bg=self.colors['bg_secondary'], height=100)
       header.pack(fill="x", padx=20, pady=25)
       header.pack_propagate(False)
-      # Carregar logo
       logo_img = Image.open("logo.png")
       logo_img = logo_img.resize((60, 60), Image.Resampling.LANCZOS)
       logo_tk = ImageTk.PhotoImage(logo_img)
 
-      # Substituir no header
       logo_label = tk.Label(header,image=logo_tk, bg=self.colors['bg_secondary'])
       logo_label.pack(side="left", padx=(0, 15))
 
       logo_label.image = logo_tk
       
-      # Animação
       self.pulse_animation()
       
-      # Título
       title_frame = tk.Frame(header, bg=self.colors['bg_secondary'])
       title_frame.pack(side="left", fill="y")
       
@@ -148,10 +131,8 @@ class ModernCityBotGUI:
       tk.Label(title_frame, text="Assistente IA", font=self.font_small, 
                bg=self.colors['bg_secondary'], fg=self.colors['accent']).pack(anchor="w")
       
-      # Separador
       tk.Frame(self.sidebar_content, bg=self.colors['border'], height=2).pack(fill="x", padx=20, pady=15)
       
-      # Menu de fontes de dados
       menu_label = tk.Label(self.sidebar_content, text="FONTES DE DADOS", 
                            font=("Segoe UI", 9, "bold"),
                            bg=self.colors['bg_secondary'], 
@@ -173,10 +154,8 @@ class ModernCityBotGUI:
          btn.pack(fill="x", padx=20, pady=4)
          self.menu_buttons.append(btn)
       
-      # Separador
       tk.Frame(self.sidebar_content, bg=self.colors['border'], height=2).pack(fill="x", padx=20, pady=20)
       
-      # Informações do contexto atual
       context_container = tk.Frame(self.sidebar_content, bg=self.colors['bg_secondary'])
       context_container.pack(fill="x", padx=20, pady=10)
       
@@ -185,7 +164,6 @@ class ModernCityBotGUI:
                bg=self.colors['bg_secondary'], 
                fg=self.colors['accent']).pack(anchor="w")
       
-      # Frame do contexto com borda
       self.context_frame = tk.Frame(context_container, bg=self.colors['bg_tertiary'], 
                                     highlightbackground=self.colors['accent'], 
                                     highlightthickness=2, bd=0)
@@ -198,7 +176,6 @@ class ModernCityBotGUI:
                                     fg=self.colors['text_primary'])
       self.context_label.pack(anchor="w", padx=15, pady=10)
       
-      # Botão limpar conversa
       self.create_menu_button("🗑️  Limpar Conversa", self.clear_chat, 
                               bg=self.colors['error']).pack(fill="x", padx=20, pady=30)
       
@@ -214,7 +191,6 @@ class ModernCityBotGUI:
                      anchor="w")
       label.pack(side="left", padx=20, fill="x", expand=True)
       
-      # Efeito hover
       def on_enter(e):
          if not bg:
                btn.config(bg=hover_color)
@@ -235,13 +211,11 @@ class ModernCityBotGUI:
       return btn
       
    def create_chat_area(self):
-      # Container principal do chat
       self.chat_container = tk.Frame(self.root, bg=self.colors['bg_primary'])
       self.chat_container.grid(row=0, column=1, sticky="nsew")
       self.chat_container.grid_columnconfigure(0, weight=1)
       self.chat_container.grid_rowconfigure(0, weight=1)
       
-      # Área de mensagens com scroll
       self.chat_canvas = tk.Canvas(self.chat_container, bg=self.colors['bg_primary'], 
                                  highlightthickness=0)
       scrollbar = ttk.Scrollbar(self.chat_container, orient="vertical", 
@@ -252,7 +226,6 @@ class ModernCityBotGUI:
       self.chat_canvas.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
       scrollbar.grid(row=0, column=1, sticky="ns")
       
-      # Frame interno para as mensagens
       self.messages_frame = tk.Frame(self.chat_canvas, bg=self.colors['bg_primary'])
       self.canvas_window = self.chat_canvas.create_window((0, 0), 
                                                          window=self.messages_frame, 
@@ -261,28 +234,23 @@ class ModernCityBotGUI:
       self.messages_frame.bind("<Configure>", self.on_frame_configure)
       self.chat_canvas.bind("<Configure>", self.on_canvas_configure)
       
-      # Bind mousewheel
       self.chat_canvas.bind_all("<MouseWheel>", self.on_mousewheel)
       
-      # Mensagem de boas-vindas
       self.add_system_message("👋 Bem-vindo ao CityBot!", 
                               "Sou seu assistente inteligente. Escolha uma opção no menu lateral ou comece a conversar.")
       
    def create_input_area(self):
-      # Frame de input
       input_frame = tk.Frame(self.chat_container, bg=self.colors['bg_secondary'], height=160)
       input_frame.grid(row=1, column=0, sticky="ew", padx=25, pady=25)
       input_frame.grid_propagate(False)
       input_frame.grid_columnconfigure(0, weight=1)
       
-      # Container do input
       input_container = tk.Frame(input_frame, bg=self.colors['bg_tertiary'], 
                                  highlightbackground=self.colors['border'],
                                  highlightthickness=1)
       input_container.grid(row=0, column=0, sticky="ew", padx=15, pady=15)
       input_container.grid_columnconfigure(0, weight=1)
       
-      # Text area
       self.input_text = tk.Text(input_container, height=3, 
                               bg=self.colors['bg_tertiary'],
                               fg=self.colors['text_primary'], 
@@ -292,7 +260,6 @@ class ModernCityBotGUI:
                               padx=10, pady=10)
       self.input_text.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
       
-      # Placeholder
       self.input_text.insert("1.0", "Digite sua mensagem...")
       self.input_text.config(fg=self.colors['text_secondary'])
       
@@ -310,7 +277,6 @@ class ModernCityBotGUI:
       self.input_text.bind("<FocusIn>", on_focus_in)
       self.input_text.bind("<FocusOut>", on_focus_out)
       
-      # Botão de enviar
       send_btn = tk.Button(input_container, text="➤", 
                            font=("Segoe UI", 18, "bold"),
                            bg=self.colors['accent'], 
@@ -321,7 +287,6 @@ class ModernCityBotGUI:
                            width=3, height=1)
       send_btn.grid(row=0, column=1, padx=15, pady=10)
       
-      # Label de dica
       hint_label = tk.Label(input_frame, 
                            text="💡 Enter para enviar  •  Shift+Enter para nova linha",
                            font=self.font_small, 
@@ -383,7 +348,6 @@ class ModernCityBotGUI:
                                  bg=self.colors['bg_primary'])
       bubble_container.pack(fill="x", padx=30, pady=8)
       
-      # Alinhar à direita se for usuário, esquerda se for bot
       if is_user:
          bubble_container.grid_columnconfigure(0, weight=1)
          col = 1
@@ -397,17 +361,14 @@ class ModernCityBotGUI:
          fg_color = self.colors['text_primary']
          anchor = "w"
       
-      # Frame da bolha
       bubble = tk.Frame(bubble_container, bg=bg_color, padx=20, pady=12)
       bubble.grid(row=0, column=col, sticky=anchor)
       
-      # Label da mensagem - AUMENTADO wraplength
       msg_label = tk.Label(bubble, text=text, font=self.font_text, 
                            bg=bg_color, fg=fg_color, 
                            wraplength=700, justify="left")
       msg_label.pack()
       
-      # Timestamp
       time_str = datetime.now().strftime("%H:%M:%S")
       time_label = tk.Label(bubble_container, text=time_str, 
                            font=self.font_small,
@@ -415,12 +376,10 @@ class ModernCityBotGUI:
                            fg=self.colors['text_secondary'])
       time_label.grid(row=1, column=col, sticky=anchor, pady=(5, 0))
       
-      # Animação de digitação se for mensagem do bot
       if not is_user and animate:
          msg_label.config(text="")
          self.animate_typing(msg_label, text)
       
-      # Scroll para o final
       self.messages_frame.update_idletasks()
       self.chat_canvas.yview_moveto(1.0)
       
@@ -438,7 +397,6 @@ class ModernCityBotGUI:
                            bg=self.colors['bg_primary'])
       container.pack(fill="x", padx=30, pady=30)
       
-      # Centralizar
       container.grid_columnconfigure(0, weight=1)
       
       inner = tk.Frame(container, bg=self.colors['bg_secondary'], 
@@ -468,7 +426,6 @@ class ModernCityBotGUI:
                      fg=self.colors['accent'])
       dots.pack()
       
-      # Animação
       def animate_dots(count=0):
          if hasattr(self, 'loading_frame') and self.loading_frame.winfo_exists():
                colors = [self.colors['accent'] if i == count % 3 
@@ -494,15 +451,12 @@ class ModernCityBotGUI:
       if not message or message == "Digite sua mensagem...":
          return
          
-      # Limpar input
       self.input_text.delete("1.0", "end")
       self.input_text.insert("1.0", "Digite sua mensagem...")
       self.input_text.config(fg=self.colors['text_secondary'])
       
-      # Adicionar mensagem do usuário
       self.add_message_bubble(message, is_user=True)
       
-      # Processar em thread separada
       self.is_processing = True
       self.status_label.config(text="●  Processando...", 
                               fg=self.colors['warning'])
@@ -515,13 +469,10 @@ class ModernCityBotGUI:
       
    def process_message(self, message):
       try:
-         # Preparar mensagens para o bot
          messages = [("user", msg) for msg in self.conversation_history] + [("user", message)]
          
-         # Obter resposta
          response = self.bot.resposta_bot(messages, self.current_context)
          
-         # Atualizar UI na thread principal
          self.root.after(0, lambda: self.show_response(response, message))
       except Exception as e:
          self.root.after(0, lambda: self.show_error(str(e)))
@@ -530,7 +481,6 @@ class ModernCityBotGUI:
       self.remove_loading_indicator()
       self.add_message_bubble(response, is_user=False)
       
-      # Salvar conversa
       self.conversation_history.extend([user_message, response])
       self.bot.save_conversation(user_message, response)
       
