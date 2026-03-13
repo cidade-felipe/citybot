@@ -26,13 +26,13 @@ O CityBot foi pensado como um assistente pessoal para estudo e trabalho, capaz d
 - Manter histórico de conversas em um banco SQLite
 - Oferecer interação tanto por linha de comando quanto por interface gráfica desenvolvida em Tkinter
 
-Ele usa LangChain com a API da Groq como modelo de linguagem e integra várias fontes de informação em um fluxo único de conversa.
+Ele suporta opções de inteligência artificial através das APIs da Groq ou Google Gemini, integrando várias fontes de informação num fluxo único de conversa.
 
 ---
 
 ## Principais funcionalidades
 
-- Chat em linguagem natural com o modelo LLM via Groq
+- Chat em linguagem natural com modelos LLM via Groq ou Gemini
 - Leitura de conteúdo de sites com `WebBaseLoader`
 - Transcrição de vídeos do YouTube com `YoutubeLoader`
 - Leitura de PDFs com `PyPDFLoader`
@@ -76,7 +76,7 @@ Além disso, há uma camada de interface gráfica em Tkinter que:
 
 - Python 3.x
 - LangChain (com `ChatGroq` e `ChatPromptTemplate`)
-- Groq API para modelos de linguagem
+- Groq API e Google Gemini API para modelos de linguagem
 - SQLite (via `sqlite3`)
 - Tkinter (interface gráfica)
 - OpenCV (`cv2`)
@@ -111,7 +111,7 @@ yt-dlp ou dependências do YoutubeLoader
 Requisitos externos:
 
 * Tesseract instalado na máquina e acessível pelo sistema
-* Uma chave de API válida da Groq
+* Uma chave de API válida da Groq ou do Google Gemini, dependendo de qual modelo for utilizado
 
 ---
 
@@ -120,21 +120,25 @@ Requisitos externos:
 O CityBot espera encontrar as variáveis abaixo em um arquivo `.env` na raiz do projeto:
 
 ```text
+# Para utilizar a versão com Groq
 GROQ_API_KEY=SuaChaveAqui
 GROQ_API_MODEL=nome_do_modelo_groq
+
+# Para utilizar a versão com Google Gemini
+GEMINI_API_KEY=SuaChaveAqui
+GEMINI_MODEL=nome_do_modelo_gemini
 ```
 
-Exemplos de modelos que podem ser usados (mencionados no código):
+Exemplos de modelos da Groq que podem ser usados:
 
 * `llama-3.3-70b-versatile`
 * `llama-3.1-8b-instant`
-* `llama3-70b-8192`
-* `llama3-8b-8192`
 * `gemma2-9b-it`
-* `llama-3.2-1b-preview`
-* `llama-3.2-3b-preview`
-* `llama-3.2-11b-vision-preview`
-* `llama-3.2-90b-vision-preview`
+
+Exemplos de modelos do Google Gemini que podem ser usados:
+
+* `gemini-2.5-flash`
+* `gemini-2.5-pro`
 
 ---
 
@@ -194,10 +198,16 @@ pip install python-dotenv langchain langchain-groq langchain-community pytessera
 
 ### 4. Executar o CityBot no terminal (CLI)
 
-Se o menu principal estiver no próprio `citybot.py`:
+Para usar com o modelo da Groq:
 
 ```bash
-python citybot.py
+python citybot_groq.py
+```
+
+Para usar com o modelo do Google Gemini:
+
+```bash
+python citybot_gemini.py
 ```
 
 O menu oferece opções como:
@@ -211,11 +221,18 @@ O menu oferece opções como:
 
 ### 5. Executar o CityBot com interface gráfica (Tkinter)
 
-Se a parte gráfica estiver no mesmo arquivo, o comando pode ser o mesmo.
-Se estiver separada, por exemplo em `citybot_gui.py`, use:
+A interface gráfica possui scripts dedicados para cada provedor de IA na pasta `gui`:
+
+Para rodar a interface usando o modelo da Groq:
 
 ```bash
-python citybot_gui.py
+python gui/gui_groq.py
+```
+
+Para rodar a interface usando o modelo do Google Gemini:
+
+```bash
+python gui/gui_gemini.py
 ```
 
 A interface de chat permite:
