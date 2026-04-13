@@ -28,7 +28,7 @@ def carrega_imagem_ocr_tesseract(caminho):
         }
         
         idioma_tesseract = map_idioma.get(idioma, 'por')
-        
+
         if idioma_tesseract:
             texto_final = pytesseract.image_to_string(imagem_tratada, lang=idioma_tesseract, config='--psm 6')
         else:

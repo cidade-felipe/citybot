@@ -10,10 +10,9 @@ def run_gui(provider):
     root = tk.Tk()
     if provider == 'gemini':
         from src.gui.app_gemini import ModernCityBotGUI
-        app = ModernCityBotGUI(root)
     else:
         from src.gui.app_groq import ModernCityBotGUI
-        app = ModernCityBotGUI(root)
+    ModernCityBotGUI(root)
     root.mainloop()
 
 def run_cli(provider):

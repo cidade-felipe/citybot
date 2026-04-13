@@ -11,7 +11,7 @@ from PIL import Image, ImageTk
 # Adiciona a raiz do projeto ao sys.path para permitir imports do pacote src
 root_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if root_path not in sys.path:
-    sys.path.append(root_path)
+   sys.path.append(root_path)
 
 from src.core.bot_groq import CityBotGroq
 

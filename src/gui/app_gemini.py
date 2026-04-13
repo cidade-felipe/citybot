@@ -11,7 +11,7 @@ from PIL import Image, ImageTk
 # Adiciona a raiz do projeto ao sys.path para permitir imports do pacote src
 root_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if root_path not in sys.path:
-    sys.path.append(root_path)
+   sys.path.append(root_path)
 
 from src.core.bot_gemini import CityBotGemini
 
@@ -101,15 +101,15 @@ class ModernCityBotGUI:
       # Busca o logo na raiz do projeto
       logo_path = os.path.join(root_path, "logo.png")
       if os.path.exists(logo_path):
-          logo_img = Image.open(logo_path)
-          logo_img.thumbnail((520, 160), Image.Resampling.LANCZOS)
-          logo_tk = ImageTk.PhotoImage(logo_img)
-          logo_label = tk.Label(header, image=logo_tk, bg=self.colors['bg_secondary'])
-          logo_label.pack(expand=True)
-          logo_label.image = logo_tk
+         logo_img = Image.open(logo_path)
+         logo_img.thumbnail((520, 160), Image.Resampling.LANCZOS)
+         logo_tk = ImageTk.PhotoImage(logo_img)
+         logo_label = tk.Label(header, image=logo_tk, bg=self.colors['bg_secondary'])
+         logo_label.pack(expand=True)
+         logo_label.image = logo_tk
       else:
-          tk.Label(header, text="CityBot", font=self.font_title, 
-                   bg=self.colors['bg_secondary'], fg=self.colors['accent']).pack(expand=True)
+         tk.Label(header, text="CityBot", font=self.font_title, 
+                  bg=self.colors['bg_secondary'], fg=self.colors['accent']).pack(expand=True)
       
       self.pulse_animation()
       
@@ -302,7 +302,7 @@ class ModernCityBotGUI:
       def animate():
          with contextlib.suppress(Exception):
             for i in range(10):
-               scale = 1 + (i * 0.05)
+               1 + (i * 0.05)
                self.root.after(50)
             self.root.after(2000, animate)
       animate()
