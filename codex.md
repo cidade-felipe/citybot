@@ -2,6 +2,8 @@
 
 Arquivo criado em 03/06/2026.
 
+Ultima atualizacao documentada: 03/06/2026, apos inclusao de novos logos em `src/figures` e atualizacao da GUI para renderizar Markdown basico com Tkinter.
+
 Este documento foi criado para servir como memoria tecnica detalhada do projeto `citybot`. Ele deve ser atualizado sempre que houver alteracao relevante no codigo, dependencias, arquitetura, comportamento, dados, riscos conhecidos ou forma de execucao.
 
 Importante: este arquivo separa explicitamente fato, inferencia e opiniao tecnica.
@@ -88,7 +90,6 @@ citybot/
 ├── README.md
 ├── requirements.txt
 ├── LICENSE
-├── logo.png
 ├── citybot.db
 ├── tempCodeRunnerFile.py
 ├── .env
@@ -104,7 +105,12 @@ citybot/
     │   └── bot_gemini.py
     ├── gui/
     │   ├── app_groq.py
-    │   └── app_gemini.py
+    │   ├── app_gemini.py
+    │   └── markdown_renderer.py
+    ├── figures/
+    │   ├── citybot_logo.png
+    │   ├── citybot_logo.svg
+    │   └── logo.png
     └── utils/
         ├── scrapers.py
         ├── pdf_reader.py
@@ -113,6 +119,18 @@ citybot/
 ```
 
 Fato: `src/` contem o codigo ativo modular.
+
+Fato: em 03/06/2026, os assets visuais observados estavam em `src/figures/`:
+
+- `citybot_logo.png`, imagem PNG de 1600 x 1600 em RGBA.
+- `citybot_logo.svg`, versao vetorial do logo.
+- `logo.png`, imagem PNG de 2816 x 1536 em modo de paleta.
+
+Fato: o antigo `logo.png` na raiz nao apareceu na lista atual de arquivos do projeto.
+
+Inferencia: os logos foram reorganizados para uma pasta de assets dentro de `src`, provavelmente para deixar a raiz mais limpa e aproximar recursos visuais do codigo da aplicacao.
+
+Opiniao tecnica: a GUI deve resolver o caminho do logo a partir da raiz real do projeto, e nao depender do diretorio atual de execucao. Isso evita falha quando o app for aberto por outro working directory.
 
 Fato: `testes/` contem arquivos como `citybot.py`, `citybot_2.py`, `citybot copy.py`, `gui.py` e `gui_3.py`.
 
@@ -655,8 +673,48 @@ Fato: a GUI usa:
 - Area de chat com bolhas.
 - Entrada de texto.
 - Barra de status.
-- Logo `logo.png`.
+- Logo carregado de `src/figures/citybot_logo.png`.
 - Threads para chamadas demoradas.
+
+Fato: em 03/06/2026, foi criado `src/gui/markdown_renderer.py` para renderizar Markdown basico dentro da GUI usando apenas Tkinter.
+
+Fato: as bolhas de mensagem deixaram de usar `tk.Label` para o corpo da mensagem e passaram a usar `tk.Text` readonly com tags de formatacao.
+
+Fato: o renderizador Markdown suporta:
+
+- Titulos `#`, `##` e `###`.
+- Negrito com `**texto**`.
+- Italico com `*texto*`.
+- Negrito e italico com `***texto***`.
+- Codigo inline com crases.
+- Blocos de codigo com cercas de crases triplas.
+- Listas simples e numeradas.
+- Citacoes iniciadas com `>`.
+- Regras horizontais com `---`, `***` ou `___`.
+- Links no formato `[texto](url)`, com clique abrindo o navegador padrao.
+
+Fato: nao foi adicionada dependencia nova para Markdown. A decisao foi manter Tkinter e implementar um renderer pequeno, porque isso preserva simplicidade, reduz custo de instalacao e evita JS.
+
+Fato: `app_groq.py` foi corrigido para importar `Path` de `pathlib`, e nao de `anyio`.
+
+Fato: `app_gemini.py` e `app_groq.py` agora resolvem o logo com base em `root_path`, usando `Path(root_path) / 'src' / 'figures' / 'citybot_logo.png`.
+
+Fato: em 03/06/2026, `conversation_history` na GUI foi corrigido para armazenar tuplas com papel da mensagem:
+
+```python
+("user", user_message)
+("assistant", response)
+```
+
+Impacto pratico: respostas em Markdown agora ficam mais legiveis na interface, especialmente listas, blocos de codigo, titulos e trechos em negrito. A correcao do historico tambem melhora a qualidade das respostas, porque o modelo deixa de receber respostas antigas como se fossem novas mensagens do usuario.
+
+Trade-offs da solucao com Tkinter:
+
+- Complexidade: baixa a media, porque o renderer e local e pequeno.
+- Custo de implementacao: baixo, sem dependencia externa.
+- Manutencao: melhor do que duplicar regex nas duas GUIs, pois o parser fica centralizado.
+- Escalabilidade visual: suficiente para Markdown basico, mas nao substitui um renderer HTML completo.
+- Performance: boa para mensagens comuns; respostas extremamente longas ainda podem deixar a bolha grande.
 
 Fato: opcoes de fonte na sidebar:
 
@@ -675,13 +733,7 @@ Risco real:
 
 - A duplicacao entre `app_gemini.py` e `app_groq.py` aumenta custo de manutencao.
 - Correcoes feitas em uma GUI podem ficar faltando na outra.
-- `conversation_history` na GUI guarda strings alternadas de usuario e assistente, mas em `process_message` elas sao reconstruidas como se todas fossem mensagens de usuario:
-
-```python
-messages = [("user", msg) for msg in self.conversation_history] + [("user", message)]
-```
-
-Isso significa que o historico enviado ao modelo na GUI nao preserva corretamente os papeis de assistente e usuario.
+- O Markdown implementado cobre os casos comuns, mas ainda nao oferece tabelas, imagens embutidas, notas de rodape ou parser CommonMark completo.
 
 Fato: `clear_chat()` limpa a tela e `conversation_history`, mas nao limpa o banco SQLite.
 

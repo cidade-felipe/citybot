@@ -15,6 +15,7 @@ if root_path not in sys.path:
    sys.path.append(root_path)
 
 from src.core.bot_gemini import CityBotGemini
+from src.gui.markdown_renderer import create_markdown_message
 
 class ModernCityBotGUI:
    def __init__(self, root):
@@ -99,8 +100,7 @@ class ModernCityBotGUI:
       header.pack(fill="x", padx=20, pady=25)
       header.pack_propagate(False)
       
-      # Busca na pasta figures o arquivo citybot_logo.svg e exibe no header, caso exista. Se não, exibe o texto "CityBot"
-      logo_path = Path('src\\figures\\citybot_logo.png')
+      logo_path = Path(root_path) / 'src' / 'figures' / 'citybot_logo.png'
       if logo_path.exists():
          logo_img = Image.open(logo_path)
          logo_img.thumbnail((120, 120), Image.Resampling.LANCZOS)
@@ -340,19 +340,21 @@ class ModernCityBotGUI:
       bubble = tk.Frame(bubble_container, bg=bg_color, padx=20, pady=12)
       bubble.grid(row=0, column=col, sticky=anchor)
       
-      msg_label = tk.Label(bubble, text=text, font=self.font_text, 
-                           bg=bg_color, fg=fg_color, 
-                           wraplength=700, justify="left")
-      msg_label.pack()
+      msg_widget = create_markdown_message(
+         bubble,
+         text,
+         fonts={'text': self.font_text, 'mono': self.font_mono},
+         colors=self.colors,
+         bg_color=bg_color,
+         fg_color=fg_color,
+         is_user=is_user,
+      )
+      msg_widget.pack(fill="both", expand=True)
       
       time_str = datetime.now().strftime("%H:%M:%S")
       time_label = tk.Label(bubble_container, text=time_str, font=self.font_small,
                            bg=self.colors['bg_primary'], fg=self.colors['text_secondary'])
       time_label.grid(row=1, column=col, sticky=anchor, pady=(5, 0))
-      
-      if not is_user and animate:
-         msg_label.config(text="")
-         self.animate_typing(msg_label, text)
       
       self.messages_frame.update_idletasks()
       self.chat_canvas.yview_moveto(1.0)
@@ -414,7 +416,7 @@ class ModernCityBotGUI:
       
    def process_message(self, message):
       try:
-         messages = [("user", msg) for msg in self.conversation_history] + [("user", message)]
+         messages = self.conversation_history + [("user", message)]
          response = self.bot.resposta_bot(messages, self.current_context)
          self.root.after(0, lambda: self.show_response(response, message))
       except Exception as e:
@@ -423,7 +425,7 @@ class ModernCityBotGUI:
    def show_response(self, response, user_message):
       self.remove_loading_indicator()
       self.add_message_bubble(response, is_user=False)
-      self.conversation_history.extend([user_message, response])
+      self.conversation_history.extend([("user", user_message), ("assistant", response)])
       self.bot.save_conversation(user_message, response)
       self.is_processing = False
       self.status_label.config(text="●  Pronto", fg=self.colors['success'])
