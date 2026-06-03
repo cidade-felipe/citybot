@@ -10,6 +10,8 @@ def run_gui(provider):
     root = tk.Tk()
     if provider == 'gemini':
         from src.gui.app_gemini import ModernCityBotGUI
+    elif provider == 'azure_openai':
+        from src.gui.app_azure_openai import ModernCityBotGUI
     else:
         from src.gui.app_groq import ModernCityBotGUI
     ModernCityBotGUI(root)
@@ -19,6 +21,9 @@ def run_cli(provider):
     if provider == 'gemini':
         from src.core.bot_gemini import CityBotGemini
         bot = CityBotGemini()
+    elif provider == 'azure_openai':
+        from src.core.bot_azure_openai import CityBotAzureOpenAI
+        bot = CityBotAzureOpenAI()
     else:
         from src.core.bot_groq import CityBotGroq
         bot = CityBotGroq()
@@ -26,8 +31,8 @@ def run_cli(provider):
 
 def main():
     parser = argparse.ArgumentParser(description="CityBot - Assistente Inteligente Multinível")
-    parser.add_argument('--provider', type=str, choices=['groq', 'gemini'], default='gemini',
-                        help="Escolha o provedor de IA (groq ou gemini). Padrão: gemini")
+    parser.add_argument('--provider', type=str, choices=['groq', 'gemini', 'azure_openai'], default='gemini',
+                        help="Escolha o provedor de IA (groq, gemini ou azure_openai). Padrão: gemini")
     parser.add_argument('--mode', type=str, choices=['gui', 'cli'], default='gui',
                         help="Escolha o modo de execução (gui ou cli). Padrão: gui")
     

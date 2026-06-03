@@ -18,9 +18,9 @@ from src.core.bot_gemini import CityBotGemini
 from src.gui.markdown_renderer import create_markdown_message
 
 class ModernCityBotGUI:
-   def __init__(self, root):
+   def __init__(self, root, bot_factory=CityBotGemini, title="CityBot Gemini - Assistente Inteligente"):
       self.root = root
-      self.root.title("CityBot Gemini - Assistente Inteligente")
+      self.root.title(title)
       self.root.geometry("1400x850")
       self.root.minsize(1200, 700)
       self.root.configure(bg="#0f0f0f")
@@ -41,7 +41,7 @@ class ModernCityBotGUI:
       
       self.setup_styles()
       
-      self.bot = CityBotGemini()
+      self.bot = bot_factory()
       self.current_context = ""
       self.conversation_history = []
       self.is_processing = False

@@ -2,7 +2,7 @@
 
 Arquivo criado em 03/06/2026.
 
-Ultima atualizacao documentada: 03/06/2026, apos inclusao de novos logos em `src/figures` e atualizacao da GUI para renderizar Markdown basico com Tkinter.
+Ultima atualizacao documentada: 03/06/2026, apos inclusao do provider Azure OpenAI, novos logos em `src/figures` e atualizacao da GUI para renderizar Markdown basico com Tkinter.
 
 Este documento foi criado para servir como memoria tecnica detalhada do projeto `citybot`. Ele deve ser atualizado sempre que houver alteracao relevante no codigo, dependencias, arquitetura, comportamento, dados, riscos conhecidos ou forma de execucao.
 
@@ -16,24 +16,26 @@ Importante: este arquivo separa explicitamente fato, inferencia e opiniao tecnic
 
 Fato: o CityBot e um assistente inteligente em Python que combina conversa com LLM, leitura de PDFs, leitura de paginas web, transcricao de videos do YouTube, OCR de imagens e persistencia de historico em SQLite.
 
-Fato: o projeto tem dois provedores de IA implementados:
+Fato: o projeto tem tres provedores de IA implementados:
 
 - Google Gemini, via pacote `google-genai`.
 - Groq, via `langchain-groq` e `ChatGroq`.
+- Azure OpenAI, via pacote `openai` e classe `AzureOpenAI`.
 
 Fato: o ponto de entrada ativo e `main.py`, que permite escolher:
 
-- Provedor: `gemini` ou `groq`.
+- Provedor: `gemini`, `groq` ou `azure_openai`.
 - Modo: `gui` ou `cli`.
 
-Fato: a interface grafica ativa usa Tkinter. Existem dois arquivos quase equivalentes para GUI:
+Fato: a interface grafica ativa usa Tkinter. Existem dois arquivos de GUI completos e um app Azure que reaproveita a base visual do Gemini:
 
 - `src/gui/app_gemini.py`.
 - `src/gui/app_groq.py`.
+- `src/gui/app_azure_openai.py`.
 
 Inferencia: o projeto nasceu ou passou por uma fase de scripts monoliticos, depois foi refatorado para uma estrutura modular em `src/`. A pasta `testes/` contem scripts antigos ou experimentais, nao uma suite automatizada de testes.
 
-Opiniao tecnica: o CityBot ja tem uma base funcional boa para uso pessoal, estudo, prototipacao e automacao leve. Para uso em producao, os maiores ganhos viriam de corrigir confiabilidade, seguranca de dados, tratamento de contexto longo, testes automatizados e reducao de duplicacao entre Gemini e Groq.
+Opiniao tecnica: o CityBot ja tem uma base funcional boa para uso pessoal, estudo, prototipacao e automacao leve. Para uso em producao, os maiores ganhos viriam de corrigir confiabilidade, seguranca de dados, tratamento de contexto longo, testes automatizados e reducao de duplicacao entre providers.
 
 Impacto pratico:
 
@@ -73,12 +75,14 @@ Fato: a validacao de sintaxe com `python -m py_compile` passou nos arquivos Pyth
 - `src/core/database.py`.
 - `src/core/bot_groq.py`.
 - `src/core/bot_gemini.py`.
+- `src/core/bot_azure_openai.py`.
 - `src/utils/scrapers.py`.
 - `src/utils/pdf_reader.py`.
 - `src/utils/ocr.py`.
 - `src/utils/file_writer.py`.
 - `src/gui/app_groq.py`.
 - `src/gui/app_gemini.py`.
+- `src/gui/app_azure_openai.py`.
 
 ## 3. Estrutura de arquivos observada
 
@@ -102,10 +106,12 @@ citybot/
     ├── core/
     │   ├── database.py
     │   ├── bot_groq.py
-    │   └── bot_gemini.py
+    │   ├── bot_gemini.py
+    │   └── bot_azure_openai.py
     ├── gui/
     │   ├── app_groq.py
     │   ├── app_gemini.py
+    │   ├── app_azure_openai.py
     │   └── markdown_renderer.py
     ├── figures/
     │   ├── citybot_logo.png
@@ -182,8 +188,10 @@ Comandos documentados pelo projeto:
 ```powershell
 python main.py
 python main.py --provider groq
+python main.py --provider azure_openai
 python main.py --mode cli
 python main.py --provider groq --mode cli
+python main.py --provider azure_openai --mode cli
 ```
 
 Fato: valores padrao em `main.py`:
@@ -193,7 +201,7 @@ Fato: valores padrao em `main.py`:
 
 Fato: `main.py` usa `argparse` e aceita somente:
 
-- Provider: `groq`, `gemini`.
+- Provider: `groq`, `gemini`, `azure_openai`.
 - Mode: `gui`, `cli`.
 
 Opiniao tecnica: esse ponto de entrada e simples e bom para uso local. Para producao ou distribuicao, valeria separar configuracao de ambiente, logs e validacao de dependencias antes de abrir a GUI.
@@ -206,6 +214,11 @@ Fato: o codigo espera as seguintes variaveis:
 GEMINI_API_KEY
 GEMINI_MODEL
 GROQ_API_MODEL
+AZURE_OPENAI_API_KEY
+AZURE_ENDPOINT
+AZURE_API_VERSION
+AZURE_DEPLOYMENT
+AZURE_MAX_OUTPUT_TOKENS
 ```
 
 Fato: o `README.md` tambem documenta:
@@ -218,6 +231,8 @@ Fato: `CityBotGemini` le explicitamente `GEMINI_API_KEY` e `GEMINI_MODEL`.
 
 Fato: `CityBotGroq` le explicitamente `GROQ_API_MODEL`. A chave `GROQ_API_KEY` nao e lida diretamente nesse arquivo, mas o `ChatGroq` normalmente depende dela no ambiente.
 
+Fato: `CityBotAzureOpenAI` le explicitamente `AZURE_OPENAI_API_KEY`, `AZURE_ENDPOINT`, `AZURE_API_VERSION`, `AZURE_DEPLOYMENT` e opcionalmente `AZURE_MAX_OUTPUT_TOKENS`.
+
 Opiniao tecnica: o projeto deveria validar todas as variaveis obrigatorias logo no inicio e mostrar erro claro antes de tentar criar clientes de API. Isso evita mensagens confusas e reduz tempo perdido em suporte.
 
 Risco real:
@@ -225,6 +240,7 @@ Risco real:
 - Se `GEMINI_API_KEY` estiver ausente, o codigo imprime erro, mas ainda tenta criar `genai.Client(api_key=self.api_key)`.
 - Se `GEMINI_MODEL` estiver ausente, chamadas ao Gemini podem falhar em tempo de execucao.
 - Se `GROQ_API_MODEL` ou `GROQ_API_KEY` estiverem ausentes, a falha pode acontecer somente na chamada ao modelo.
+- Se variaveis obrigatorias do Azure OpenAI estiverem ausentes, `CityBotAzureOpenAI` nao cria cliente e retorna uma mensagem de erro de configuracao ao usuario.
 
 ## 8. Dependencias
 
@@ -234,6 +250,7 @@ Dependencias principais:
 
 - `python-dotenv`: carrega `.env`.
 - `google-genai`: SDK do Gemini.
+- `openai`: SDK usado pelo provider Azure OpenAI com `AzureOpenAI`.
 - `langchain`: usado por Groq para prompt/memoria.
 - `langchain-groq`: cliente Groq via LangChain.
 - `requests`: leitura de paginas web.
@@ -268,10 +285,12 @@ main.py
   ├── seleciona provider e modo
   ├── GUI Tkinter
   │   ├── src/gui/app_gemini.py
-  │   └── src/gui/app_groq.py
+  │   ├── src/gui/app_groq.py
+  │   └── src/gui/app_azure_openai.py
   ├── Core de IA e persistencia
   │   ├── src/core/bot_gemini.py
   │   ├── src/core/bot_groq.py
+  │   ├── src/core/bot_azure_openai.py
   │   └── src/core/database.py
   └── Utilitarios de entrada/saida
       ├── src/utils/scrapers.py
@@ -311,6 +330,7 @@ Fato: `run_gui(provider)`:
 
 - Cria `tk.Tk()`.
 - Se provider for `gemini`, importa `ModernCityBotGUI` de `src.gui.app_gemini`.
+- Se provider for `azure_openai`, importa `ModernCityBotGUI` de `src.gui.app_azure_openai`.
 - Caso contrario, importa `ModernCityBotGUI` de `src.gui.app_groq`.
 - Inicia `root.mainloop()`.
 
@@ -495,6 +515,52 @@ Risco real:
 - O uso de contexto completo do documento tambem pode estourar limite de tokens.
 
 Opiniao tecnica: o provider Groq deveria seguir a mesma estrategia de validacao do Gemini, mas de forma mais rigorosa, validando `GROQ_API_KEY` e `GROQ_API_MODEL` antes de permitir chat.
+
+## 13.1 Provider Azure OpenAI
+
+Arquivo: `src/core/bot_azure_openai.py`.
+
+Fato: em 03/06/2026, foi adicionada a classe `CityBotAzureOpenAI`.
+
+Fato: o provider usa `AzureOpenAI` do pacote `openai`, seguindo o exemplo fornecido pelo usuario:
+
+```python
+client.responses.create(
+    model=os.getenv('AZURE_DEPLOYMENT'),
+    input='...',
+    max_output_tokens=300,
+)
+```
+
+Fato: variaveis esperadas:
+
+- `AZURE_OPENAI_API_KEY`.
+- `AZURE_ENDPOINT`.
+- `AZURE_API_VERSION`.
+- `AZURE_DEPLOYMENT`.
+- `AZURE_MAX_OUTPUT_TOKENS`, opcional, com padrao `300`.
+
+Fato: `CityBotAzureOpenAI` valida configuracao antes de criar o cliente. Se faltar variavel obrigatoria, ele guarda `config_error`, nao instancia `AzureOpenAI` e retorna erro claro em `resposta_bot`.
+
+Fato: em 03/06/2026, o ambiente local tinha `openai 1.59.5`, e essa versao nao expunha `client.responses`. Por isso, o `requirements.txt` passou a exigir `openai>=1.68.0`.
+
+Fato: `CityBotAzureOpenAI` tambem valida se o cliente criado possui `responses`. Se a versao instalada do pacote nao suportar `client.responses.create`, o provider retorna mensagem pedindo `pip install -r requirements.txt`.
+
+Fato: o prompt enviado ao Azure OpenAI e uma string unica, montada por `_monta_prompt`, contendo instrucao do CityBot, contexto carregado e historico da conversa.
+
+Inferencia: a escolha por `input` textual foi feita para ficar alinhada ao exemplo recebido e reduzir risco de incompatibilidade com formatos mais complexos da Responses API.
+
+Fato: o OCR no provider Azure OpenAI usa Tesseract local e salva o texto via `salvar_texto`, igual ao fluxo Groq. Imagens nao sao enviadas ao Azure OpenAI nessa implementacao.
+
+Opiniao tecnica: essa decisao e conservadora e boa para privacidade, porque o exemplo recebido cobre texto, nao imagem. Caso seja desejado OCR multimodal via Azure no futuro, isso deve ser tratado como nova decisao de produto por envolver custo, privacidade e suporte do deployment.
+
+Trade-offs:
+
+- Complexidade: baixa, porque segue o mesmo contrato dos outros bots.
+- Custo de implementacao: baixo a medio, por reaproveitar utilitarios existentes.
+- Manutencao: boa, pois a GUI Azure reaproveita a base visual do Gemini.
+- Escalabilidade: ainda limitada por prompt textual completo, sem chunking ou recuperacao.
+- Risco: depende da versao do pacote `openai` suportar `client.responses.create` com Azure OpenAI.
 
 ## 14. Utilitario de scraping
 
@@ -698,6 +764,14 @@ Fato: nao foi adicionada dependencia nova para Markdown. A decisao foi manter Tk
 Fato: `app_groq.py` foi corrigido para importar `Path` de `pathlib`, e nao de `anyio`.
 
 Fato: `app_gemini.py` e `app_groq.py` agora resolvem o logo com base em `root_path`, usando `Path(root_path) / 'src' / 'figures' / 'citybot_logo.png`.
+
+Fato: em 03/06/2026, `src/gui/app_azure_openai.py` foi ajustado para adicionar a raiz do projeto ao `sys.path` antes dos imports `src.*`. Isso permite executar diretamente:
+
+```powershell
+& C:/Users/felip/OneDrive/git_work/citybot/venv/Scripts/python.exe c:/Users/felip/OneDrive/git_work/citybot/src/gui/app_azure_openai.py
+```
+
+sem `ModuleNotFoundError: No module named 'src'`.
 
 Fato: em 03/06/2026, `conversation_history` na GUI foi corrigido para armazenar tuplas com papel da mensagem:
 
@@ -1260,7 +1334,7 @@ Fato: neste caso especifico, `codex.md` foi criado do zero, entao nao havia vers
 Validacao minima recomendada apos mudancas em codigo:
 
 ```powershell
-python -m py_compile main.py src\core\database.py src\core\bot_groq.py src\core\bot_gemini.py src\utils\scrapers.py src\utils\pdf_reader.py src\utils\ocr.py src\utils\file_writer.py src\gui\app_groq.py src\gui\app_gemini.py
+python -m py_compile main.py src\core\database.py src\core\bot_groq.py src\core\bot_gemini.py src\core\bot_azure_openai.py src\utils\scrapers.py src\utils\pdf_reader.py src\utils\ocr.py src\utils\file_writer.py src\gui\app_groq.py src\gui\app_gemini.py src\gui\app_azure_openai.py src\gui\markdown_renderer.py
 ```
 
 Validacao adicional recomendada quando houver testes:
@@ -1331,6 +1405,12 @@ Executar GUI Groq:
 python main.py --provider groq
 ```
 
+Executar GUI Azure OpenAI:
+
+```powershell
+python main.py --provider azure_openai
+```
+
 Executar CLI Gemini:
 
 ```powershell
@@ -1343,10 +1423,16 @@ Executar CLI Groq:
 python main.py --provider groq --mode cli
 ```
 
+Executar CLI Azure OpenAI:
+
+```powershell
+python main.py --provider azure_openai --mode cli
+```
+
 Validar sintaxe:
 
 ```powershell
-python -m py_compile main.py src\core\database.py src\core\bot_groq.py src\core\bot_gemini.py src\utils\scrapers.py src\utils\pdf_reader.py src\utils\ocr.py src\utils\file_writer.py src\gui\app_groq.py src\gui\app_gemini.py
+python -m py_compile main.py src\core\database.py src\core\bot_groq.py src\core\bot_gemini.py src\core\bot_azure_openai.py src\utils\scrapers.py src\utils\pdf_reader.py src\utils\ocr.py src\utils\file_writer.py src\gui\app_groq.py src\gui\app_gemini.py src\gui\app_azure_openai.py src\gui\markdown_renderer.py
 ```
 
 Ver status do Git:

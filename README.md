@@ -26,13 +26,13 @@ O CityBot foi pensado como um assistente pessoal para estudo e trabalho, capaz d
 - Manter histórico de conversas em um banco SQLite
 - Oferecer interação tanto por linha de comando quanto por interface gráfica desenvolvida em Tkinter
 
-Ele suporta opções de inteligência artificial através das APIs da Groq ou Google Gemini, integrando várias fontes de informação num fluxo único de conversa.
+Ele suporta opções de inteligência artificial através das APIs da Groq, Google Gemini ou Azure OpenAI, integrando várias fontes de informação num fluxo único de conversa.
 
 ---
 
 ## Principais funcionalidades
 
-- Chat em linguagem natural com modelos LLM via Groq ou Gemini
+- Chat em linguagem natural com modelos LLM via Groq, Gemini ou Azure OpenAI
 - Leitura de conteúdo de sites com `WebBaseLoader`
 - Transcrição de vídeos do YouTube com `YoutubeLoader`
 - Leitura de PDFs com `PyPDFLoader`
@@ -59,11 +59,13 @@ citybot/
 │   ├── core/               # Lógica de negócio e banco de dados
 │   │   ├── database.py     # Gerenciamento SQLite
 │   │   ├── bot_groq.py     # Implementação Groq
-│   │   └── bot_gemini.py   # Implementação Gemini
+│   │   ├── bot_gemini.py   # Implementação Gemini
+│   │   └── bot_azure_openai.py # Implementação Azure OpenAI
 │   │
 │   ├── gui/                # Interfaces gráficas (Tkinter)
 │   │   ├── app_groq.py
-│   │   └── app_gemini.py
+│   │   ├── app_gemini.py
+│   │   └── app_azure_openai.py
 │   │
 │   └── utils/              # Funções utilitárias (OCR, Scrapers, PDF)
 │       ├── scrapers.py
@@ -78,7 +80,7 @@ citybot/
 
 A refatoração dividiu as responsabilidades em níveis:
 
-1. **Core (`src/core`)**: Contém a inteligência e o banco de dados. As classes `CityBotGroq` e `CityBotGemini` gerenciam o fluxo de mensagens e persistência.
+1. **Core (`src/core`)**: Contém a inteligência e o banco de dados. As classes `CityBotGroq`, `CityBotGemini` e `CityBotAzureOpenAI` gerenciam o fluxo de mensagens e persistência.
 2. **GUI (`src/gui`)**: Responsável exclusiva pela apresentação visual e eventos do Tkinter.
 3. **Utils (`src/utils`)**: Contém funções puras para extração de dados (OCR, Web, YouTube, PDF), facilitando a reutilização e testes.
 
@@ -88,7 +90,8 @@ A refatoração dividiu as responsabilidades em níveis:
 
 - Python 3.x
 - LangChain (com `ChatGroq` e `ChatPromptTemplate`)
-- Groq API e Google Gemini API para modelos de linguagem
+- Groq API, Google Gemini API e Azure OpenAI para modelos de linguagem
+- OpenAI Python SDK (`AzureOpenAI`) para integração com Azure OpenAI
 - SQLite (via `sqlite3`)
 - Tkinter (interface gráfica)
 - OpenCV (`cv2`)
@@ -123,7 +126,8 @@ yt-dlp ou dependências do YoutubeLoader
 Requisitos externos:
 
 * Tesseract instalado na máquina e acessível pelo sistema
-* Uma chave de API válida da Groq ou do Google Gemini, dependendo de qual modelo for utilizado
+* Uma chave de API válida da Groq, Google Gemini ou Azure OpenAI, dependendo de qual provedor for utilizado
+* Para Azure OpenAI com `responses.create`, use `openai>=1.68.0`
 
 ---
 
@@ -139,6 +143,13 @@ GROQ_API_MODEL=nome_do_modelo_groq
 # Para utilizar a versão com Google Gemini
 GEMINI_API_KEY=SuaChaveAqui
 GEMINI_MODEL=nome_do_modelo_gemini
+
+# Para utilizar a versão com Azure OpenAI
+AZURE_OPENAI_API_KEY=SuaChaveAqui
+AZURE_ENDPOINT=https://seu-recurso.openai.azure.com/
+AZURE_API_VERSION=versao_da_api
+AZURE_DEPLOYMENT=nome_do_deployment
+AZURE_MAX_OUTPUT_TOKENS=300
 ```
 
 Exemplos de modelos da Groq que podem ser usados:
@@ -201,6 +212,9 @@ python main.py
 
 # Iniciar interface com Groq
 python main.py --provider groq
+
+# Iniciar interface com Azure OpenAI
+python main.py --provider azure_openai
 ```
 
 #### Linha de Comando (CLI)
@@ -211,6 +225,9 @@ python main.py --mode cli
 
 # Iniciar CLI com Groq
 python main.py --provider groq --mode cli
+
+# Iniciar CLI com Azure OpenAI
+python main.py --provider azure_openai --mode cli
 ```
 
 ---

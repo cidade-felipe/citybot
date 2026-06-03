@@ -21,6 +21,9 @@ pytesseract==0.3.13
 # Provedor Gemini
 google-genai==1.67.0
 
+# Provedor Azure OpenAI
+openai>=1.68.0
+
 # Provedor Groq
 langchain==0.1.20
 langchain-groq==0.1.5
