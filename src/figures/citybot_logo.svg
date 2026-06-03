@@ -1,0 +1,84 @@
+<svg width="1200" height="1200" viewBox="0 0 1200 1200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="160" y1="120" x2="1080" y2="1100" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0B1F33"/>
+      <stop offset="0.45" stop-color="#0D4148"/>
+      <stop offset="1" stop-color="#102A43"/>
+    </linearGradient>
+    <linearGradient id="cyan" x1="290" y1="260" x2="930" y2="920" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6FFFE9"/>
+      <stop offset="0.55" stop-color="#34D399"/>
+      <stop offset="1" stop-color="#38BDF8"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="300" y1="260" x2="900" y2="820" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E6FFFB" stop-opacity="0.98"/>
+      <stop offset="1" stop-color="#B7F8F0" stop-opacity="0.88"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="28" stdDeviation="34" flood-color="#020617" flood-opacity="0.35"/>
+    </filter>
+    <filter id="glow" x="-35%" y="-35%" width="170%" height="170%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect x="70" y="70" width="1060" height="1060" rx="270" fill="url(#bg)"/>
+  <path d="M186 846C282 706 356 665 475 707C615 756 686 659 811 673C930 686 1002 764 1050 856V930H186V846Z" fill="#071827" opacity="0.55"/>
+
+  <g opacity="0.22" stroke="#7DEFE4" stroke-width="10" stroke-linecap="round">
+    <path d="M250 287H356C390 287 411 314 411 343V407"/>
+    <path d="M947 348H840C806 348 785 375 785 404V470"/>
+    <path d="M291 914H381C416 914 439 891 439 856V800"/>
+    <path d="M919 896H828C793 896 772 873 772 838V790"/>
+  </g>
+
+  <g fill="#7DEFE4" opacity="0.45">
+    <circle cx="250" cy="287" r="18"/>
+    <circle cx="947" cy="348" r="18"/>
+    <circle cx="291" cy="914" r="18"/>
+    <circle cx="919" cy="896" r="18"/>
+  </g>
+
+  <g filter="url(#softShadow)">
+    <path d="M332 376C332 329.6 369.6 292 416 292H784C830.4 292 868 329.6 868 376V662C868 708.4 830.4 746 784 746H646L543 846C527 861.5 500 850.2 500 827.9V746H416C369.6 746 332 708.4 332 662V376Z" fill="url(#glass)"/>
+    <path d="M332 376C332 329.6 369.6 292 416 292H784C830.4 292 868 329.6 868 376V662C868 708.4 830.4 746 784 746H646L543 846C527 861.5 500 850.2 500 827.9V746H416C369.6 746 332 708.4 332 662V376Z" stroke="url(#cyan)" stroke-width="22"/>
+  </g>
+
+  <g>
+    <rect x="432" y="410" width="336" height="212" rx="74" fill="#0B1F33"/>
+    <rect x="470" y="447" width="92" height="78" rx="30" fill="#6FFFE9"/>
+    <rect x="638" y="447" width="92" height="78" rx="30" fill="#6FFFE9"/>
+    <path d="M508 579C552 617 648 617 692 579" stroke="#6FFFE9" stroke-width="20" stroke-linecap="round"/>
+    <path d="M600 410V355" stroke="#0B1F33" stroke-width="22" stroke-linecap="round"/>
+    <circle cx="600" cy="330" r="25" fill="#34D399"/>
+  </g>
+
+  <g filter="url(#glow)" opacity="0.95">
+    <path d="M276 784H932V898H276V784Z" fill="#071827" opacity="0.72"/>
+    <rect x="306" y="700" width="70" height="198" rx="10" fill="#38BDF8"/>
+    <rect x="396" y="648" width="86" height="250" rx="10" fill="#34D399"/>
+    <rect x="506" y="722" width="70" height="176" rx="10" fill="#6FFFE9"/>
+    <rect x="600" y="676" width="95" height="222" rx="10" fill="#38BDF8"/>
+    <rect x="719" y="728" width="76" height="170" rx="10" fill="#34D399"/>
+    <rect x="819" y="620" width="85" height="278" rx="10" fill="#6FFFE9"/>
+  </g>
+
+  <g fill="#071827" opacity="0.62">
+    <rect x="329" y="734" width="15" height="24" rx="4"/>
+    <rect x="419" y="684" width="16" height="27" rx="4"/>
+    <rect x="531" y="754" width="15" height="24" rx="4"/>
+    <rect x="629" y="711" width="16" height="27" rx="4"/>
+    <rect x="747" y="758" width="15" height="24" rx="4"/>
+    <rect x="845" y="656" width="16" height="27" rx="4"/>
+    <rect x="362" y="802" width="15" height="24" rx="4"/>
+    <rect x="457" y="768" width="16" height="27" rx="4"/>
+    <rect x="654" y="794" width="16" height="27" rx="4"/>
+    <rect x="868" y="739" width="16" height="27" rx="4"/>
+  </g>
+
+  <text x="600" y="1010" text-anchor="middle" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="112" font-weight="800" fill="#E6FFFB" letter-spacing="-3">CityBot</text>
+</svg>

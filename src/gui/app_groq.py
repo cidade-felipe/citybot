@@ -7,6 +7,7 @@ from datetime import datetime
 import os
 import sys
 from PIL import Image, ImageTk
+from anyio import Path
 
 # Adiciona a raiz do projeto ao sys.path para permitir imports do pacote src
 root_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -98,14 +99,14 @@ class ModernCityBotGUI:
       header.pack(fill="x", padx=20, pady=25)
       header.pack_propagate(False)
       
-      logo_path = os.path.join(root_path, "logo.png")
-      if os.path.exists(logo_path):
-          logo_img = Image.open(logo_path)
-          logo_img = logo_img.resize((60, 60), Image.Resampling.LANCZOS)
-          logo_tk = ImageTk.PhotoImage(logo_img)
-          logo_label = tk.Label(header, image=logo_tk, bg=self.colors['bg_secondary'])
-          logo_label.pack(side="left", padx=(0, 15))
-          logo_label.image = logo_tk
+      logo_path = Path('src\\figures\\citybot_logo.png')
+      if logo_path.exists():
+         logo_img = Image.open(logo_path)
+         logo_img.thumbnail((120, 120), Image.Resampling.LANCZOS)
+         logo_tk = ImageTk.PhotoImage(logo_img)
+         logo_label = tk.Label(header, image=logo_tk, bg=self.colors['bg_secondary'])
+         logo_label.pack(expand=True)
+         logo_label.image = logo_tk
       
       self.pulse_animation()
       

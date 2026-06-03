@@ -7,6 +7,7 @@ from datetime import datetime
 import os
 import sys
 from PIL import Image, ImageTk
+from pathlib import Path
 
 # Adiciona a raiz do projeto ao sys.path para permitir imports do pacote src
 root_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -69,7 +70,7 @@ class ModernCityBotGUI:
       self.root.grid_columnconfigure(1, weight=1)
       self.root.grid_rowconfigure(0, weight=1)
       
-   def create_sidebar(self):
+   def create_sidebar(self):  # sourcery skip: extract-method
       self.sidebar = tk.Frame(self.root, bg=self.colors['bg_secondary'], width=320)
       self.sidebar.grid(row=0, column=0, sticky="nsew", padx=(0, 2))
       self.sidebar.grid_propagate(False)
@@ -98,11 +99,11 @@ class ModernCityBotGUI:
       header.pack(fill="x", padx=20, pady=25)
       header.pack_propagate(False)
       
-      # Busca o logo na raiz do projeto
-      logo_path = os.path.join(root_path, "logo.png")
-      if os.path.exists(logo_path):
+      # Busca na pasta figures o arquivo citybot_logo.svg e exibe no header, caso exista. Se não, exibe o texto "CityBot"
+      logo_path = Path('src\\figures\\citybot_logo.png')
+      if logo_path.exists():
          logo_img = Image.open(logo_path)
-         logo_img.thumbnail((520, 160), Image.Resampling.LANCZOS)
+         logo_img.thumbnail((120, 120), Image.Resampling.LANCZOS)
          logo_tk = ImageTk.PhotoImage(logo_img)
          logo_label = tk.Label(header, image=logo_tk, bg=self.colors['bg_secondary'])
          logo_label.pack(expand=True)
