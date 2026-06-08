@@ -12,6 +12,7 @@ INLINE_TOKEN_RE = re.compile(
 LINK_RE = re.compile(r'^\[([^\]]+)\]\(([^)]+)\)$')
 HEADING_RE = re.compile(r'^(#{1,3})\s+(.+)$')
 LIST_RE = re.compile(r'^(\s*)([-+*]|\d+[.)])\s+(.+)$')
+TABLE_SEPARATOR_RE = re.compile(r'^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$')
 
 
 def create_markdown_message(parent, text, fonts, colors, bg_color, fg_color, is_user=False):
@@ -47,6 +48,7 @@ def _configure_tags(widget, fonts, colors, bg_color, fg_color, is_user):
     bold = _font_variant(base, weight='bold')
     italic = _font_variant(base, slant='italic')
     bold_italic = _font_variant(base, weight='bold', slant='italic')
+    mono_bold = _font_variant(mono, weight='bold')
     heading_1 = _font_variant(base, size=base.actual('size') + 5, weight='bold')
     heading_2 = _font_variant(base, size=base.actual('size') + 3, weight='bold')
     heading_3 = _font_variant(base, size=base.actual('size') + 1, weight='bold')
@@ -57,7 +59,7 @@ def _configure_tags(widget, fonts, colors, bg_color, fg_color, is_user):
     quote_fg = '#12313a' if is_user else colors.get('text_secondary', '#b0b0b0')
     heading_fg = fg_color if is_user else colors.get('accent', fg_color)
 
-    widget._markdown_fonts = [base, mono, bold, italic, bold_italic, heading_1, heading_2, heading_3]
+    widget._markdown_fonts = [base, mono, bold, italic, bold_italic, mono_bold, heading_1, heading_2, heading_3]
     widget._markdown_link_color = link_fg
 
     widget.tag_configure('bold', font=bold)
@@ -82,6 +84,9 @@ def _configure_tags(widget, fonts, colors, bg_color, fg_color, is_user):
     widget.tag_configure('rule', foreground=colors.get('border', '#333333'))
     widget.tag_configure('paragraph', spacing3=2)
     widget.tag_configure('link_url', foreground=link_fg)
+    widget.tag_configure('table_header', font=mono_bold, spacing1=4)
+    widget.tag_configure('table_row', font=mono, lmargin1=12, lmargin2=12)
+    widget.tag_configure('table_rule', font=mono, foreground=colors.get('border', '#333333'), lmargin1=12)
 
 
 def _font_variant(base, **changes):
@@ -94,20 +99,29 @@ def _render_markdown(widget, text):
     lines = text.splitlines() or ['']
     in_code_block = False
     link_counter = [0]
+    index = 0
 
-    for line in lines:
+    while index < len(lines):
+        line = lines[index]
         stripped = line.strip()
 
         if stripped.startswith('```'):
             in_code_block = not in_code_block
+            index += 1
             continue
 
         if in_code_block:
             widget.insert('end', line.rstrip() + '\n', ('code_block',))
+            index += 1
+            continue
+
+        if _starts_table(lines, index):
+            index = _insert_table(widget, lines, index)
             continue
 
         if not stripped:
             widget.insert('end', '\n')
+            index += 1
             continue
 
         heading_match = HEADING_RE.match(line)
@@ -115,10 +129,12 @@ def _render_markdown(widget, text):
             level = len(heading_match.group(1))
             _insert_inline(widget, heading_match.group(2).strip(), (f'h{level}',), link_counter)
             widget.insert('end', '\n')
+            index += 1
             continue
 
         if stripped in {'---', '***', '___'}:
             widget.insert('end', '-' * 48 + '\n', ('rule',))
+            index += 1
             continue
 
         if line.lstrip().startswith('>'):
@@ -126,6 +142,7 @@ def _render_markdown(widget, text):
             widget.insert('end', '| ', ('quote',))
             _insert_inline(widget, quote_text, ('quote',), link_counter)
             widget.insert('end', '\n')
+            index += 1
             continue
 
         list_match = LIST_RE.match(line)
@@ -135,12 +152,84 @@ def _render_markdown(widget, text):
             widget.insert('end', visual_indent + marker + ' ', ('list_marker',))
             _insert_inline(widget, content, ('paragraph',), link_counter)
             widget.insert('end', '\n')
+            index += 1
             continue
 
         _insert_inline(widget, line, ('paragraph',), link_counter)
         widget.insert('end', '\n')
+        index += 1
 
     _trim_final_newline(widget)
+
+
+def _starts_table(lines, index):
+    if index + 1 >= len(lines):
+        return False
+
+    return _is_table_row(lines[index]) and bool(TABLE_SEPARATOR_RE.match(lines[index + 1]))
+
+
+def _is_table_row(line):
+    stripped = line.strip()
+    return stripped.startswith('|') and stripped.endswith('|') and stripped.count('|') >= 2
+
+
+def _insert_table(widget, lines, start_index):
+    header = _split_table_row(lines[start_index])
+    body_rows = []
+    index = start_index + 2
+
+    while index < len(lines) and _is_table_row(lines[index]):
+        body_rows.append(_split_table_row(lines[index]))
+        index += 1
+
+    rows = [header] + body_rows
+    column_count = max((len(row) for row in rows), default=0)
+    normalized_rows = [_normalize_table_row(row, column_count) for row in rows]
+    widths = _table_widths(normalized_rows)
+
+    widget.insert('end', _format_table_row(normalized_rows[0], widths) + '\n', ('table_header', 'table_row'))
+    widget.insert('end', _format_table_rule(widths) + '\n', ('table_rule',))
+
+    for row in normalized_rows[1:]:
+        widget.insert('end', _format_table_row(row, widths) + '\n', ('table_row',))
+
+    return index
+
+
+def _split_table_row(line):
+    stripped = line.strip().strip('|')
+    return [cell.strip() for cell in stripped.split('|')]
+
+
+def _normalize_table_row(row, column_count):
+    return row + [''] * max(0, column_count - len(row))
+
+
+def _table_widths(rows):
+    return [
+        max(len(_plain_cell(row[column])) for row in rows)
+        for column in range(len(rows[0]))
+    ]
+
+
+def _format_table_row(row, widths):
+    cells = [
+        _plain_cell(cell).ljust(widths[index])
+        for index, cell in enumerate(row)
+    ]
+    return '  '.join(cells).rstrip()
+
+
+def _format_table_rule(widths):
+    return '  '.join('-' * width for width in widths).rstrip()
+
+
+def _plain_cell(text):
+    text = re.sub(r'(\*\*\*|\*\*|\*)', '', text)
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'\1', text)
+    return text
 
 
 def _insert_inline(widget, text, base_tags, link_counter):

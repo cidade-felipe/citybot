@@ -149,8 +149,10 @@ AZURE_OPENAI_API_KEY=SuaChaveAqui
 AZURE_ENDPOINT=https://seu-recurso.openai.azure.com/
 AZURE_API_VERSION=versao_da_api
 AZURE_DEPLOYMENT=nome_do_deployment
-AZURE_MAX_OUTPUT_TOKENS=300
+AZURE_MAX_OUTPUT_TOKENS=1200
 ```
+
+Se as respostas do Azure OpenAI ficarem cortadas, aumente `AZURE_MAX_OUTPUT_TOKENS`. O valor `300` é baixo para resumos longos, análises e respostas com listas.
 
 Exemplos de modelos da Groq que podem ser usados:
 

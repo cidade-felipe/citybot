@@ -2,7 +2,7 @@
 
 Arquivo criado em 03/06/2026.
 
-Ultima atualizacao documentada: 03/06/2026, apos inclusao do provider Azure OpenAI, novos logos em `src/figures` e atualizacao da GUI para renderizar Markdown basico com Tkinter.
+Ultima atualizacao documentada: 08/06/2026, apos inclusao de suporte a tabelas no renderer Markdown da GUI Tkinter.
 
 Este documento foi criado para servir como memoria tecnica detalhada do projeto `citybot`. Ele deve ser atualizado sempre que houver alteracao relevante no codigo, dependencias, arquitetura, comportamento, dados, riscos conhecidos ou forma de execucao.
 
@@ -528,7 +528,7 @@ Fato: o provider usa `AzureOpenAI` do pacote `openai`, seguindo o exemplo fornec
 client.responses.create(
     model=os.getenv('AZURE_DEPLOYMENT'),
     input='...',
-    max_output_tokens=300,
+    max_output_tokens=self.max_output_tokens,
 )
 ```
 
@@ -538,13 +538,17 @@ Fato: variaveis esperadas:
 - `AZURE_ENDPOINT`.
 - `AZURE_API_VERSION`.
 - `AZURE_DEPLOYMENT`.
-- `AZURE_MAX_OUTPUT_TOKENS`, opcional, com padrao `300`.
+- `AZURE_MAX_OUTPUT_TOKENS`, opcional, com padrao `1200`.
 
 Fato: `CityBotAzureOpenAI` valida configuracao antes de criar o cliente. Se faltar variavel obrigatoria, ele guarda `config_error`, nao instancia `AzureOpenAI` e retorna erro claro em `resposta_bot`.
 
 Fato: em 03/06/2026, o ambiente local tinha `openai 1.59.5`, e essa versao nao expunha `client.responses`. Por isso, o `requirements.txt` passou a exigir `openai>=1.68.0`.
 
 Fato: `CityBotAzureOpenAI` tambem valida se o cliente criado possui `responses`. Se a versao instalada do pacote nao suportar `client.responses.create`, o provider retorna mensagem pedindo `pip install -r requirements.txt`.
+
+Fato: em 08/06/2026, o padrao de `AZURE_MAX_OUTPUT_TOKENS` foi aumentado de `300` para `1200`, porque `300` corta respostas medias de resumo, analise e listas.
+
+Fato: `CityBotAzureOpenAI` passou a verificar `response.status` e `response.incomplete_details.reason`. Se a API retornar resposta incompleta por `max_output_tokens`, o texto exibido inclui um aviso pedindo para aumentar `AZURE_MAX_OUTPUT_TOKENS`.
 
 Fato: o prompt enviado ao Azure OpenAI e uma string unica, montada por `_monta_prompt`, contendo instrucao do CityBot, contexto carregado e historico da conversa.
 
@@ -746,6 +750,8 @@ Fato: em 03/06/2026, foi criado `src/gui/markdown_renderer.py` para renderizar M
 
 Fato: as bolhas de mensagem deixaram de usar `tk.Label` para o corpo da mensagem e passaram a usar `tk.Text` readonly com tags de formatacao.
 
+Fato: em 08/06/2026, uma tentativa de redimensionar automaticamente a altura da bolha Markdown apos renderizacao foi removida, porque causava bolhas visualmente grandes demais para mensagens curtas. A causa principal das respostas Azure cortadas era o limite baixo de `AZURE_MAX_OUTPUT_TOKENS`.
+
 Fato: o renderizador Markdown suporta:
 
 - Titulos `#`, `##` e `###`.
@@ -755,11 +761,16 @@ Fato: o renderizador Markdown suporta:
 - Codigo inline com crases.
 - Blocos de codigo com cercas de crases triplas.
 - Listas simples e numeradas.
+- Tabelas Markdown simples no formato GitHub, com cabecalho, separador e linhas iniciadas e encerradas por `|`.
 - Citacoes iniciadas com `>`.
 - Regras horizontais com `---`, `***` ou `___`.
 - Links no formato `[texto](url)`, com clique abrindo o navegador padrao.
 
 Fato: nao foi adicionada dependencia nova para Markdown. A decisao foi manter Tkinter e implementar um renderer pequeno, porque isso preserva simplicidade, reduz custo de instalacao e evita JS.
+
+Fato: em 08/06/2026, `src/gui/markdown_renderer.py` passou a detectar blocos de tabela compostos por linha de cabecalho, linha separadora `|---|---|` e linhas de dados. A renderizacao remove os pipes crus, ignora a linha separadora original e exibe a tabela alinhada em fonte monoespacada.
+
+Opiniao tecnica: a implementacao de tabela e propositalmente simples. Ela cobre bem tabelas comuns geradas por LLMs, mas nao tenta implementar todo o CommonMark, como pipes escapados dentro de celulas, alinhamento por coluna ou tabelas com conteudo multiline.
 
 Fato: `app_groq.py` foi corrigido para importar `Path` de `pathlib`, e nao de `anyio`.
 
@@ -807,7 +818,7 @@ Risco real:
 
 - A duplicacao entre `app_gemini.py` e `app_groq.py` aumenta custo de manutencao.
 - Correcoes feitas em uma GUI podem ficar faltando na outra.
-- O Markdown implementado cobre os casos comuns, mas ainda nao oferece tabelas, imagens embutidas, notas de rodape ou parser CommonMark completo.
+- O Markdown implementado cobre os casos comuns, incluindo tabelas simples, mas ainda nao oferece imagens embutidas, notas de rodape, celulas multiline ou parser CommonMark completo.
 
 Fato: `clear_chat()` limpa a tela e `conversation_history`, mas nao limpa o banco SQLite.
 

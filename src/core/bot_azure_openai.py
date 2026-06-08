@@ -11,6 +11,7 @@ from src.utils.file_writer import salvar_texto
 
 
 class CityBotAzureOpenAI:
+    DEFAULT_MAX_OUTPUT_TOKENS = 1200
     REQUIRED_ENV = (
         'AZURE_OPENAI_API_KEY',
         'AZURE_ENDPOINT',
@@ -51,11 +52,11 @@ class CityBotAzureOpenAI:
         return 'Variaveis de ambiente ausentes para Azure OpenAI: ' + ', '.join(missing)
 
     def _get_max_output_tokens(self):
-        value = os.getenv('AZURE_MAX_OUTPUT_TOKENS', '300')
+        value = os.getenv('AZURE_MAX_OUTPUT_TOKENS', str(self.DEFAULT_MAX_OUTPUT_TOKENS))
         try:
             return int(value)
         except ValueError:
-            return 300
+            return self.DEFAULT_MAX_OUTPUT_TOKENS
 
     def carrega_site(self, url):
         return carrega_site(url)
@@ -93,14 +94,30 @@ class CityBotAzureOpenAI:
                 input=prompt,
                 max_output_tokens=self.max_output_tokens,
             )
-            return getattr(response, 'output_text', '') or str(response)
+            texto = getattr(response, 'output_text', '') or str(response)
+            return self._adiciona_aviso_se_resposta_incompleta(texto, response)
         except Exception as e:
             return f'Erro na API do Azure OpenAI: {e}'
+
+    def _adiciona_aviso_se_resposta_incompleta(self, texto, response):
+        incomplete_details = getattr(response, 'incomplete_details', None)
+        reason = getattr(incomplete_details, 'reason', '') if incomplete_details else ''
+        status = getattr(response, 'status', '')
+
+        if status == 'incomplete' or reason == 'max_output_tokens':
+            return (
+                f'{texto}\n\n'
+                f'[Resposta interrompida pelo limite atual de saída '
+                f'({self.max_output_tokens} tokens). '
+                f'Aumente AZURE_MAX_OUTPUT_TOKENS no .env para respostas mais longas.]'
+            )
+
+        return texto
 
     def _monta_prompt(self, mensagens, documento=''):
         linhas = [
             'Voce e um assistente amigavel chamado CityBot.',
-            'Responda de forma clara, util e direta.',
+            'Responda de forma clara, util e direta, porém amigável. Seja conciso, mas completo. Evite respostas vagas ou genéricas.',
         ]
 
         if documento:
