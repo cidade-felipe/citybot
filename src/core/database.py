@@ -37,12 +37,16 @@ class CityBotDatabase:
 
     def load_conversations(self):
         with self.conexao:
-            return self.conexao.execute("SELECT user_message, assistant_response FROM conversations;").fetchall()
+            return self.conexao.execute(
+                'SELECT user_message, assistant_response '
+                'FROM conversations ORDER BY id;'
+            ).fetchall()
+
+    def limpar_conversas(self):
+        with self.conexao:
+            self.conexao.execute('DELETE FROM conversations;')
 
     def limpar_banco(self):
-        cursor = self.conexao.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        tabelas = cursor.fetchall()
-        for (tabela,) in tabelas:
-            cursor.execute(f"DROP TABLE IF EXISTS {tabela};")
-        self.conexao.commit()
+        with self.conexao:
+            self.conexao.execute('DELETE FROM conversations;')
+            self.conexao.execute('DELETE FROM users;')

@@ -33,9 +33,9 @@ Ele suporta opções de inteligência artificial através das APIs da Groq, Goog
 ## Principais funcionalidades
 
 - Chat em linguagem natural com modelos LLM via Groq, Gemini ou Azure OpenAI
-- Leitura de conteúdo de sites com `WebBaseLoader`
-- Transcrição de vídeos do YouTube com `YoutubeLoader`
-- Leitura de PDFs com `PyPDFLoader`
+- Leitura de conteúdo de sites com `requests` e `BeautifulSoup`
+- Transcrição de vídeos do YouTube com `youtube-transcript-api`
+- Leitura de PDFs com `pypdf`
 - OCR de imagens com OpenCV + Tesseract + langdetect
 - Salvamento de texto de imagens em `.docx` e `.txt`
 - Histórico de conversas e usuários em SQLite
@@ -51,9 +51,10 @@ O projeto segue agora uma estrutura modular organizada na pasta `src/`:
 ```text
 citybot/
 ├── main.py                 # Ponto de entrada unificado (CLI e GUI)
-├── logo.png                # Logo da aplicação
 ├── requirements.txt        # Dependências
+├── codex.md                # Documentação técnica viva
 ├── .env                    # Configurações de API
+├── tests/                  # Testes automatizados
 │
 ├── src/
 │   ├── core/               # Lógica de negócio e banco de dados
@@ -65,7 +66,8 @@ citybot/
 │   ├── gui/                # Interfaces gráficas (Tkinter)
 │   │   ├── app_groq.py
 │   │   ├── app_gemini.py
-│   │   └── app_azure_openai.py
+│   │   ├── app_azure_openai.py
+│   │   └── markdown_renderer.py
 │   │
 │   └── utils/              # Funções utilitárias (OCR, Scrapers, PDF)
 │       ├── scrapers.py
@@ -100,6 +102,7 @@ A refatoração dividiu as responsabilidades em níveis:
 - `python-docx` para gerar arquivos `.docx`
 - `pyperclip` para integração com área de transferência
 - `python-dotenv` para carregamento de variáveis de ambiente
+- `truststore` para usar os certificados confiáveis do sistema operacional
 - `Pillow` (PIL) para tratar imagem do logo na interface
 
 ---
@@ -112,7 +115,12 @@ Lista geral de dependências principais:
 python-dotenv
 langchain
 langchain-groq
-langchain-community
+google-genai
+openai
+requests
+beautifulsoup4
+youtube-transcript-api
+truststore
 pytesseract
 opencv-python
 python-docx
@@ -120,7 +128,6 @@ langdetect
 pyperclip
 pillow
 pypdf
-yt-dlp ou dependências do YoutubeLoader
 ```
 
 Requisitos externos:
@@ -182,7 +189,7 @@ O arquivo `citybot.db` é criado automaticamente, e as tabelas são:
   * `user_message`
   * `assistant_response`
 
-Há também um método `limpar_banco` que remove todas as tabelas, caso seja necessário começar do zero.
+Há também um método `limpar_banco` que apaga os registros e preserva as tabelas para que novas conversas possam ser gravadas normalmente.
 
 ---
 
@@ -192,10 +199,12 @@ O CityBot agora possui um ponto de entrada único: `main.py`.
 
 ### 1. Instalação básica
 
-```bash
+```powershell
 git clone https://github.com/cidade-felipe/citybot.git
 cd citybot
-pip install -r requirements.txt
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 ```
 
 ### 2. Configurar o `.env`
@@ -234,6 +243,18 @@ python main.py --provider azure_openai --mode cli
 
 ---
 
+## Testes
+
+Os testes automatizados usam a biblioteca padrão `unittest` e não acessam APIs externas:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Eles cobrem persistência SQLite, restauração e limpeza do histórico na GUI, scraping com timeout, URLs do YouTube, PDFs com páginas sem texto e segurança dos nomes de arquivos OCR.
+
+---
+
 ## Fluxos suportados
 
 Resumo dos fluxos principais:
@@ -248,6 +269,8 @@ Resumo dos fluxos principais:
   O bot carrega a transcrição do vídeo e responde conforme as perguntas sobre o conteúdo.
 * Imagem (OCR):
   O bot detecta o texto na imagem, salva em `.docx` e `.txt` e pode responder sobre esse conteúdo.
+* Histórico:
+  A GUI restaura as conversas salvas ao iniciar. Após confirmação, o botão “Limpar Conversa” apaga o histórico persistido e também remove o contexto carregado, sem excluir perfis de usuário.
 
 ---
 

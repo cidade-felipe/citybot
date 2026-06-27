@@ -51,6 +51,7 @@ class ModernCityBotGUI:
       self.create_chat_area()
       self.create_input_area()
       self.create_status_bar()
+      self.load_conversation_history()
       
       self.root.bind("<Return>", lambda e: None if e.state & 0x1 else self.send_message())
       self.root.bind("<Shift-Return>", lambda e: None)
@@ -229,6 +230,14 @@ class ModernCityBotGUI:
       animate()
       
    def animate_startup(self): pass
+   def load_conversation_history(self):
+      for user_message, assistant_response in self.bot.load_conversations():
+         self.conversation_history.extend([
+            ('user', user_message),
+            ('assistant', assistant_response),
+         ])
+         self.add_message_bubble(user_message, is_user=True, animate=False)
+         self.add_message_bubble(assistant_response, is_user=False, animate=False)
    def on_frame_configure(self, event=None): self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox("all"))
    def on_canvas_configure(self, event): self.chat_canvas.itemconfig(self.canvas_window, width=event.width)
    def on_mousewheel(self, event): self.chat_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
@@ -295,7 +304,9 @@ class ModernCityBotGUI:
          messages = self.conversation_history + [("user", message)]
          response = self.bot.resposta_bot(messages, self.current_context)
          self.root.after(0, lambda: self.show_response(response, message))
-      except Exception as e: self.root.after(0, lambda: self.show_error(str(e)))
+      except Exception as e:
+         error_message = str(e)
+         self.root.after(0, lambda: self.show_error(error_message))
       
    def show_response(self, response, user_message):
       self.remove_loading_indicator(); self.add_message_bubble(response, is_user=False)
@@ -308,43 +319,75 @@ class ModernCityBotGUI:
       
    def set_chat_mode(self):
       self.current_context = ""; self.context_label.config(text="Chat Livre"); self.add_system_message("💬 Modo Chat Livre", "Pergunte o que quiser. Estou pronto para conversar!")
+   def set_loaded_context(self, content):
+      if not content or not content.strip():
+         raise ValueError('Não foi possível extrair conteúdo dessa fonte.')
+      self.current_context = content
+   def show_context_error(self, error_message):
+      self.status_label.config(text="●  Erro", fg=self.colors['error'])
+      messagebox.showerror("Erro", error_message)
    def load_website(self): self.show_input_dialog("Carregar Site", "Digite a URL do site:", self.process_website)
    def process_website(self, url):
       if not url: return
       self.status_label.config(text="●  Carregando site...", fg=self.colors['warning'])
       def load():
-         try: self.current_context = self.bot.carrega_site(url); self.root.after(0, lambda: self.on_context_loaded("Site", f"{url[:50]}..."))
-         except Exception as e: self.root.after(0, lambda: messagebox.showerror("Erro", str(e)))
+         try:
+            self.set_loaded_context(self.bot.carrega_site(url))
+            self.root.after(0, lambda: self.on_context_loaded("Site", f"{url[:50]}..."))
+         except Exception as e:
+            error_message = str(e)
+            self.root.after(0, lambda: self.show_context_error(error_message))
       threading.Thread(target=load, daemon=True).start()
    def load_video(self): self.show_input_dialog("Carregar Vídeo", "Digite a URL do YouTube:", self.process_video)
    def process_video(self, url):
       if not url: return
       self.status_label.config(text="●  Carregando vídeo...", fg=self.colors['warning'])
       def load():
-         try: self.current_context = self.bot.carrega_video(url); self.root.after(0, lambda: self.on_context_loaded("Vídeo", url))
-         except Exception as e: self.root.after(0, lambda: messagebox.showerror("Erro", str(e)))
+         try:
+            self.set_loaded_context(self.bot.carrega_video(url))
+            self.root.after(0, lambda: self.on_context_loaded("Vídeo", url))
+         except Exception as e:
+            error_message = str(e)
+            self.root.after(0, lambda: self.show_context_error(error_message))
       threading.Thread(target=load, daemon=True).start()
    def load_pdf(self):
       filename = filedialog.askopenfilename(title="Selecionar PDF", filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")])
       if filename:
          self.status_label.config(text="●  Carregando PDF...", fg=self.colors['warning'])
          def load():
-            try: self.current_context = self.bot.carrega_pdf(filename); self.root.after(0, lambda: self.on_context_loaded("PDF", os.path.basename(filename)))
-            except Exception as e: self.root.after(0, lambda: messagebox.showerror("Erro", str(e)))
+            try:
+               self.set_loaded_context(self.bot.carrega_pdf(filename))
+               self.root.after(0, lambda: self.on_context_loaded("PDF", os.path.basename(filename)))
+            except Exception as e:
+               error_message = str(e)
+               self.root.after(0, lambda: self.show_context_error(error_message))
          threading.Thread(target=load, daemon=True).start()
    def load_image_ocr(self):
       filename = filedialog.askopenfilename(title="Selecionar Imagem", filetypes=[("Image files", "*.png *.jpg *.jpeg *.bmp *.tiff"), ("All files", "*.*")])
       if filename:
          nome = os.path.splitext(os.path.basename(filename))[0]; self.status_label.config(text="●  Processando OCR...", fg=self.colors['warning'])
          def load():
-            try: self.current_context = self.bot.carrega_imagem_ocr(filename, nome); self.root.after(0, lambda: self.on_context_loaded("OCR", os.path.basename(filename)))
-            except Exception as e: self.root.after(0, lambda: messagebox.showerror("Erro", str(e)))
+            try:
+               self.set_loaded_context(self.bot.carrega_imagem_ocr(filename, nome))
+               self.root.after(0, lambda: self.on_context_loaded("OCR", os.path.basename(filename)))
+            except Exception as e:
+               error_message = str(e)
+               self.root.after(0, lambda: self.show_context_error(error_message))
          threading.Thread(target=load, daemon=True).start()
    def on_context_loaded(self, tipo, nome):
       self.context_label.config(text=f"{tipo}: {nome}"); self.add_system_message(f"✅ {tipo} Carregado", f"Agora você pode fazer perguntas sobre: {nome}"); self.status_label.config(text="●  Pronto", fg=self.colors['success'])
    def clear_chat(self):
+      if self.is_processing:
+         messagebox.showwarning("Aguarde", "Espere a resposta atual terminar antes de limpar a conversa.")
+         return
+      if not messagebox.askyesno("Limpar conversa", "Deseja apagar permanentemente todo o histórico de conversas?"):
+         return
+      self.bot.limpar_conversas()
       for widget in self.messages_frame.winfo_children(): widget.destroy()
-      self.conversation_history = []; self.add_system_message("🗑️ Conversa Limpa", "O histórico foi apagado. Comece uma nova conversa!")
+      self.conversation_history = []
+      self.current_context = ""
+      self.context_label.config(text="Chat Livre")
+      self.add_system_message("🗑️ Conversa Limpa", "O histórico foi apagado. Comece uma nova conversa!")
    def show_input_dialog(self, title, prompt, callback):
       dialog = tk.Toplevel(self.root); dialog.title(title); dialog.geometry("550x220"); dialog.configure(bg=self.colors['bg_secondary']); dialog.transient(self.root); dialog.grab_set(); dialog.update_idletasks()
       x = (dialog.winfo_screenwidth() // 2) - 275; y = (dialog.winfo_screenheight() // 2) - 110; dialog.geometry(f"+{x}+{y}")

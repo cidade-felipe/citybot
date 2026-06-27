@@ -2,7 +2,7 @@
 
 Arquivo criado em 03/06/2026.
 
-Ultima atualizacao documentada: 08/06/2026, apos inclusao de suporte a tabelas no renderer Markdown da GUI Tkinter.
+Ultima atualizacao documentada: 27/06/2026, apos correcoes de ingestao, historico, seguranca de arquivos e inclusao de testes automatizados.
 
 Este documento foi criado para servir como memoria tecnica detalhada do projeto `citybot`. Ele deve ser atualizado sempre que houver alteracao relevante no codigo, dependencias, arquitetura, comportamento, dados, riscos conhecidos ou forma de execucao.
 
@@ -33,7 +33,7 @@ Fato: a interface grafica ativa usa Tkinter. Existem dois arquivos de GUI comple
 - `src/gui/app_groq.py`.
 - `src/gui/app_azure_openai.py`.
 
-Inferencia: o projeto nasceu ou passou por uma fase de scripts monoliticos, depois foi refatorado para uma estrutura modular em `src/`. A pasta `testes/` contem scripts antigos ou experimentais, nao uma suite automatizada de testes.
+Inferencia: o projeto nasceu ou passou por uma fase de scripts monoliticos, depois foi refatorado para uma estrutura modular em `src/`. A pasta `testes/` contem scripts antigos ou experimentais. A suite automatizada ativa fica em `tests/`.
 
 Opiniao tecnica: o CityBot ja tem uma base funcional boa para uso pessoal, estudo, prototipacao e automacao leve. Para uso em producao, os maiores ganhos viriam de corrigir confiabilidade, seguranca de dados, tratamento de contexto longo, testes automatizados e reducao de duplicacao entre providers.
 
@@ -56,7 +56,7 @@ Fato: antes da criacao deste arquivo, `codex.md` nao existia.
 
 Fato: o comando `git status --short` estava limpo antes da criacao deste arquivo.
 
-Fato: existe um ambiente virtual chamado `venv` na raiz. Isso esta alinhado com a regra do projeto de usar `python -m venv venv`, e nao `.venv`.
+Fato: em 27/06/2026, o `venv` antigo, que referenciava uma instalacao removida do Python 3.11, foi preservado em `Backup/27_06_2026` e substituido por um ambiente limpo com Python 3.12.10. Todas as dependencias de `requirements.txt` foram instaladas, `pip check` nao encontrou conflitos e os 15 modulos diretos importaram corretamente.
 
 Fato: existe uma pasta `Backup` na raiz.
 
@@ -95,13 +95,16 @@ citybot/
 ├── requirements.txt
 ├── LICENSE
 ├── citybot.db
-├── tempCodeRunnerFile.py
 ├── .env
 ├── .gitignore
 ├── venv/
 ├── Backup/
 ├── textos/
 ├── testes/
+├── tests/
+│   ├── test_database.py
+│   ├── test_gui_history.py
+│   └── test_utils.py
 └── src/
     ├── core/
     │   ├── database.py
@@ -142,9 +145,7 @@ Fato: `testes/` contem arquivos como `citybot.py`, `citybot_2.py`, `citybot copy
 
 Inferencia: a pasta `testes/` funciona como historico de experimentos e scripts legados, nao como testes automatizados. Isso e reforcado pelo fato de estar ignorada no `.gitignore`.
 
-Fato: `tempCodeRunnerFile.py` contem apenas uma string curta relacionada a modelo Groq (`lama-3.3-70b-versatile`, possivelmente um valor digitado incorretamente). Ele parece ser um arquivo residual de editor.
-
-Opiniao tecnica: `tempCodeRunnerFile.py` deveria ser removido ou ignorado, porque arquivo residual aumenta ruido e pode confundir manutencao. Antes de remover, deve-se seguir a politica de backup do projeto.
+Fato: o arquivo residual `tempCodeRunnerFile.py`, que continha Python invalido, foi salvo em `Backup/27_06_2026`, removido do codigo versionado e adicionado ao `.gitignore`.
 
 ## 4. Arquivos versionados e arquivos locais
 
@@ -155,6 +156,7 @@ Fato: o `.gitignore` ignora itens importantes para seguranca e ambiente local:
 - `.venv`.
 - `citybot.db`.
 - `testes/`.
+- `tempCodeRunnerFile.py`.
 - `textos`.
 - `Backup`.
 - arquivos de cache Python.
@@ -256,6 +258,7 @@ Dependencias principais:
 - `requests`: leitura de paginas web.
 - `beautifulsoup4`: parse HTML.
 - `youtube-transcript-api`: transcricao do YouTube.
+- `truststore`: validacao HTTPS usando certificados confiaveis do sistema operacional.
 - `pypdf`: leitura de PDF.
 - `opencv-python`: pre-processamento de imagem para OCR Tesseract.
 - `pytesseract`: OCR local.
@@ -388,14 +391,14 @@ Fato: metodos disponiveis:
 - `load_user(name)`.
 - `save_conversation(user_message, assistant_response)`.
 - `load_conversations()`.
+- `limpar_conversas()`.
 - `limpar_banco()`.
 
-Fato: `limpar_banco()` busca todas as tabelas em `sqlite_master` e executa `DROP TABLE IF EXISTS`.
+Fato: `limpar_conversas()` apaga somente o historico. `limpar_banco()` executa `DELETE` nas tabelas `conversations` e `users`. Ambos preservam o schema para novas gravacoes.
 
 Risco real:
 
 - `check_same_thread=False` permite usar a conexao em threads diferentes, mas nao torna o acesso automaticamente seguro. Em GUI com threads, pode haver risco de concorrencia se varias operacoes acessarem o banco ao mesmo tempo.
-- `limpar_banco()` derruba todas as tabelas do banco conectado. Se futuramente houver outras tabelas, elas tambem serao removidas.
 - Nao ha timestamps em `conversations`, entao fica dificil auditar ordem real, periodo, duracao, volume e comportamento de uso.
 - Nao ha `user_id` em `conversations`, entao a tabela de usuarios ainda nao se conecta ao historico.
 
@@ -542,7 +545,7 @@ Fato: variaveis esperadas:
 
 Fato: `CityBotAzureOpenAI` valida configuracao antes de criar o cliente. Se faltar variavel obrigatoria, ele guarda `config_error`, nao instancia `AzureOpenAI` e retorna erro claro em `resposta_bot`.
 
-Fato: em 03/06/2026, o ambiente local tinha `openai 1.59.5`, e essa versao nao expunha `client.responses`. Por isso, o `requirements.txt` passou a exigir `openai>=1.68.0`.
+Fato: antes da recriacao do ambiente em 27/06/2026, o Python global tinha `openai 1.59.5`, que nao expunha `client.responses`. O novo `venv` instalou `openai 2.44.0`, e a disponibilidade da Responses API foi validada. O `requirements.txt` exige `openai>=1.68.0`.
 
 Fato: `CityBotAzureOpenAI` tambem valida se o cliente criado possui `responses`. Se a versao instalada do pacote nao suportar `client.responses.create`, o provider retorna mensagem pedindo `pip install -r requirements.txt`.
 
@@ -572,7 +575,7 @@ Arquivo: `src/utils/scrapers.py`.
 
 Fato: `carrega_site(url_site)`:
 
-- Usa `requests.get(url_site, headers={'User-Agent': 'Mozilla/5.0'})`.
+- Usa `requests.get` com `User-Agent` e timeout de 15 segundos.
 - Chama `response.raise_for_status()`.
 - Usa BeautifulSoup com parser `html.parser`.
 - Remove tags `script` e `style`.
@@ -580,24 +583,17 @@ Fato: `carrega_site(url_site)`:
 - Limpa linhas e chunks vazios.
 - Retorna texto unido por quebra de linha.
 
-Fato: se ocorrer erro, imprime:
-
-```text
-Erro ao carregar o site: ...
-```
-
-e retorna string vazia.
+Fato: se ocorrer erro, registra a falha com `logging` e retorna string vazia.
 
 Fato: `carrega_video(url_video)`:
 
-- Tenta extrair `video_id` de URLs com `v=`.
-- Tenta extrair `video_id` de URLs `youtu.be`.
-- Usa `YouTubeTranscriptApi().fetch(video_id, languages=['pt', 'en'])`.
+- Extrai `video_id` de URLs `watch`, `youtu.be`, `shorts`, `embed` e `live`.
+- Usa `YouTubeTranscriptApi().fetch(video_id, languages=['pt', 'en'])`, compativel com a versao `1.2.4` fixada.
+- Usa `truststore` para validar HTTPS com o repositorio de certificados do sistema operacional.
 - Concatena textos da transcricao.
 
 Risco real em sites:
 
-- Nao ha timeout no `requests.get`, entao a aplicacao pode travar aguardando resposta.
 - Nao ha limite de tamanho de HTML.
 - Nao ha validacao de URL.
 - Nao ha protecao contra acessar enderecos internos ou locais, caso isso seja usado em ambiente corporativo.
@@ -605,11 +601,12 @@ Risco real em sites:
 
 Risco real em YouTube:
 
-- URLs `shorts`, `embed` ou formatos com parametros mais complexos podem falhar.
 - Videos sem transcricao em `pt` ou `en` retornam erro.
 - Transcricoes podem estar indisponiveis por configuracao do video.
 
-Opiniao tecnica: para uso pessoal, a abordagem e simples e adequada. Para ambiente real, adicionar `timeout`, validacao de URL, parser robusto de `video_id`, limites de tamanho e logs traria ganho grande de confiabilidade com baixo custo.
+Opiniao tecnica: para uso pessoal, a abordagem e simples e adequada. Para ambiente real, validacao de URL, limites de tamanho e protecao contra enderecos internos ainda trariam ganho de seguranca.
+
+Fato: em 27/06/2026, a leitura de videos falhava primeiro por certificado HTTPS nao reconhecido pelo `certifi` e, depois da correcao SSL, pela incompatibilidade do parser `youtube-transcript-api 0.6.3` com a resposta atual do YouTube. Com `truststore 0.10.4` e `youtube-transcript-api 1.2.4`, um video publico retornou 61 trechos de transcricao.
 
 ## 15. Utilitario de PDF
 
@@ -620,12 +617,12 @@ Fato: `carrega_pdf(caminho)`:
 - Verifica se o caminho existe com `os.path.exists`.
 - Usa `PdfReader(caminho)`.
 - Itera por `reader.pages`.
-- Concatena `page.extract_text()` com quebra de linha.
-- Em erro, imprime mensagem e retorna string vazia.
+- Trata `page.extract_text() is None` como texto vazio.
+- Une as paginas com quebra de linha.
+- Em erro, registra mensagem com `logging` e retorna string vazia.
 
 Risco real:
 
-- `page.extract_text()` pode retornar `None`. Nesse caso, `None + "\n"` geraria erro.
 - PDFs escaneados sem camada de texto nao serao lidos por `pypdf`.
 - PDFs grandes podem gerar contexto grande demais para o modelo.
 - Nao ha contagem de paginas, tamanho de arquivo ou estrategia de chunking.
@@ -666,6 +663,8 @@ Fato: idiomas mapeados incluem portugues, ingles, espanhol, frances, alemao, ita
 
 Fato: se a deteccao falhar, usa portugues como padrao.
 
+Fato: em 27/06/2026, o Tesseract local disponibilizava os idiomas `eng`, `osd` e `por`.
+
 Risco real:
 
 - Se `cv2.imread` retornar `None`, `cv2.cvtColor` falha. O erro e capturado, mas a mensagem nao explica que a imagem nao foi carregada corretamente.
@@ -704,26 +703,20 @@ Fato: `salvar_texto(texto, nome)`:
 
 - Cria pasta `textos` se nao existir.
 - Cria documento Word com `python-docx`.
-- Salva `textos/{nome}.docx`.
-- Salva `textos/{nome}.txt`.
+- Normaliza o nome para um basename seguro.
+- Remove extensoes `.docx` e `.txt` informadas pelo usuario para evitar duplicacao.
+- Salva `textos/{nome_seguro}.docx`.
+- Salva `textos/{nome_seguro}.txt`.
 - Retorna o texto original.
 
-Fato: em caso de erro, imprime:
-
-```text
-Erro ao salvar texto: ...
-```
-
-e retorna string vazia.
+Fato: em caso de erro de escrita, registra a falha com `logging` e retorna string vazia.
 
 Risco real:
 
-- `nome` nao e sanitizado.
-- Em CLI, o usuario pode informar nome com barras ou caminhos relativos.
 - Pode haver sobrescrita silenciosa se o mesmo nome for usado novamente.
 - Nao ha timestamp, UUID ou confirmacao de substituicao.
 
-Opiniao tecnica: para evitar perda de arquivo e risco de path traversal, o nome deveria ser normalizado para um basename seguro e talvez receber timestamp automatico.
+Opiniao tecnica: o risco de path traversal foi corrigido. Para evitar perda por sobrescrita, ainda pode ser util adicionar confirmacao ou timestamp.
 
 Impacto pratico: isso evita perda de documentos OCR e reduz risco de gravar arquivo fora da pasta esperada.
 
@@ -820,16 +813,11 @@ Risco real:
 - Correcoes feitas em uma GUI podem ficar faltando na outra.
 - O Markdown implementado cobre os casos comuns, incluindo tabelas simples, mas ainda nao oferece imagens embutidas, notas de rodape, celulas multiline ou parser CommonMark completo.
 
-Fato: `clear_chat()` limpa a tela e `conversation_history`, mas nao limpa o banco SQLite.
+Fato: apos confirmacao do usuario, `clear_chat()` apaga somente as conversas persistidas, limpa a tela, o historico em memoria e o contexto carregado. Perfis de usuario sao preservados. A limpeza e bloqueada enquanto uma resposta esta em processamento.
 
-Risco real: o usuario pode achar que "Limpar Conversa" apaga tudo, mas o historico persistido continua no banco.
+Fato: ao iniciar, as GUIs Gemini, Groq e Azure restauram o historico salvo com roles `user` e `assistant`.
 
-Opiniao tecnica: o botao deveria deixar claro se limpa apenas a tela ou tambem o banco. Para seguranca, eu manteria duas acoes:
-
-- "Limpar tela".
-- "Apagar historico salvo", com confirmacao.
-
-Impacto pratico: isso evita falsa sensacao de privacidade e reduz risco de manter conversas sensiveis sem perceber.
+Impacto pratico: o comportamento visual agora corresponde ao estado persistido e o botao nao deixa conversas antigas no banco.
 
 ## 19. Interface CLI
 
@@ -837,8 +825,9 @@ Arquivos:
 
 - `src/core/bot_gemini.py`.
 - `src/core/bot_groq.py`.
+- `src/core/bot_azure_openai.py`.
 
-Fato: ambos os providers possuem metodo `menu()`.
+Fato: os tres providers possuem metodo `menu()`.
 
 Fato: o menu CLI oferece:
 
@@ -856,6 +845,8 @@ Fato: a CLI usa `pyperclip.copy('')` para limpar a area de transferencia ao inic
 Fato: a versao Gemini detecta texto na area de transferencia e oferece uso do conteudo colado.
 
 Fato: a versao Groq tambem usa `pyperclip.paste()` em parte do fluxo.
+
+Fato: em 27/06/2026, a restauracao do historico no CLI Groq foi corrigida para converter cada registro do banco em duas mensagens, `user` e `assistant`.
 
 Risco real:
 
@@ -893,7 +884,7 @@ Riscos:
 - Site pode bloquear scraping.
 - Conteudo dinamico pode nao aparecer.
 - Paginas grandes podem estourar contexto.
-- Sem timeout, a chamada pode travar.
+- O timeout de 15 segundos limita espera excessiva, mas nao ha retry automatico.
 
 ### 20.3 Video do YouTube
 
@@ -951,21 +942,15 @@ Riscos:
 - Nao salva automaticamente em `.docx` e `.txt` na implementacao atual.
 - Custo e privacidade dependem do uso.
 
-## 21. Divergencias entre README e codigo
+## 21. Correspondencia entre README e codigo
 
-Fato: o `README.md` menciona `WebBaseLoader`, `YoutubeLoader` e `PyPDFLoader`.
-
-Fato: o codigo ativo em `src/utils` usa:
+Fato: em 27/06/2026, o `README.md` foi atualizado para refletir que o codigo ativo em `src/utils` usa:
 
 - `requests` e `BeautifulSoup` para site.
 - `youtube-transcript-api` para YouTube.
 - `pypdf.PdfReader` para PDF.
 
-Inferencia: o README preserva informacoes de uma versao anterior baseada em LangChain loaders.
-
-Opiniao tecnica: o README deve ser atualizado para refletir o codigo atual. Isso evita erro de instalacao, manutencao e onboarding.
-
-Impacto pratico: documentacao inconsistente aumenta tempo de suporte e pode levar alguem a procurar bugs em dependencias que nem estao mais no fluxo ativo.
+Fato: referencias antigas a `WebBaseLoader`, `YoutubeLoader` e `PyPDFLoader` foram removidas da documentacao principal.
 
 ## 22. Qualidade de codigo
 
@@ -983,70 +968,35 @@ Pontos positivos verificados:
 Pontos de atencao:
 
 - Duplicacao forte entre GUIs.
-- Falta de testes automatizados reais.
-- Tratamento de erro baseado em `print` e string vazia.
-- Falta de logs estruturados.
+- Cobertura automatizada ainda concentrada em banco e utilitarios.
+- Alguns providers e o OCR ainda tratam erros com `print` ou mensagens genericas.
+- Logging ainda nao possui configuracao central.
 - Falta de validacao de configuracao.
 - Falta de limites de contexto e tamanho de entrada.
-- Falta de sanitizacao de nomes de arquivo.
 - Falta de timestamps e metadados no banco.
-- Risco de historico com roles incorretos na GUI.
 
 Opiniao tecnica: o projeto esta em um bom estagio de MVP funcional, mas ainda nao esta pronto para ser tratado como produto confiavel em producao.
 
 ## 23. Testes e validacao
 
-Fato: nao foi encontrada uma suite automatizada de testes versionada.
+Fato: existe uma suite automatizada versionada em `tests/`, implementada com `unittest`.
 
 Fato: a pasta `testes/` esta ignorada no `.gitignore` e contem scripts legados.
 
-Fato: foi feita validacao de sintaxe com `python -m py_compile`, sem erro.
+Fato: os testes cobrem:
 
-Opiniao tecnica: os primeiros testes automatizados deveriam cobrir os utilitarios e o banco, porque sao a parte mais facil de testar e reduzem risco de regressao rapidamente.
+- persistencia e limpeza do banco;
+- continuidade de gravacao depois da limpeza;
+- restauracao e limpeza do historico nas GUIs Gemini e Groq;
+- timeout e remocao de scripts no scraping;
+- parser de URLs do YouTube;
+- uso da API de transcricao compativel com a dependencia;
+- paginas PDF sem texto;
+- contencao de arquivos OCR dentro de `textos/`.
 
-Sugestao de testes unitarios:
+Fato: em 27/06/2026, os 10 testes passaram e 16 arquivos Python de producao e teste passaram na validacao de AST.
 
-- `database.py`:
-  - Cria tabelas em banco temporario.
-  - Salva e carrega usuario.
-  - Salva e carrega conversas.
-  - Garante que `limpar_banco` remove tabelas.
-
-- `pdf_reader.py`:
-  - PDF inexistente retorna string vazia.
-  - PDF com texto retorna conteudo esperado.
-  - Pagina com `extract_text() is None` nao quebra.
-
-- `scrapers.py`:
-  - `carrega_site` com `requests.get` mockado.
-  - Remove `script` e `style`.
-  - Retorna string vazia em erro.
-  - Extrai `video_id` de diferentes formatos.
-
-- `ocr.py`:
-  - Arquivo inexistente retorna string vazia.
-  - Mock de `pytesseract` para validar chamada.
-  - Mock de Gemini para validar prompt e retorno.
-
-- `file_writer.py`:
-  - Cria `.docx` e `.txt`.
-  - Nao permite path traversal.
-  - Evita sobrescrita acidental.
-
-- Providers:
-  - Mock de cliente Gemini.
-  - Mock de `ChatGroq`.
-  - Verificacao de formatacao de historico.
-  - Erro de API tratado sem quebrar GUI/CLI.
-
-Sugestao de testes de integracao:
-
-- Rodar CLI com provider mockado.
-- Carregar PDF pequeno real.
-- Carregar HTML local ou mockado.
-- Testar banco temporario por sessao.
-
-Impacto pratico: testes nesses pontos reduzem retrabalho, evitam quebrar fluxos de leitura de documentos e aumentam confianca para evoluir a GUI.
+Limitacao: ainda faltam testes dos providers, OCR e fluxos completos da GUI.
 
 ## 24. Observabilidade e logs
 
@@ -1127,47 +1077,37 @@ Para o estagio atual, uma solucao simples e eficaz seria limitar tamanho do cont
 
 ### Prioridade 0 - Corrigir riscos que podem causar perda, vazamento ou confusao
 
-1. Sanitizar nomes em `salvar_texto`.
-   - Motivo: evita path traversal e sobrescrita acidental.
-   - Impacto: mitiga risco de gravar arquivos fora de `textos/`.
-   - Complexidade: baixa.
+Concluido em 27/06/2026:
 
-2. Diferenciar "limpar tela" de "apagar historico salvo".
-   - Motivo: hoje o usuario pode achar que apagou o banco, mas nao apagou.
-   - Impacto: melhora privacidade e confianca.
-   - Complexidade: baixa a media.
+- Sanitizacao de nomes em `salvar_texto`.
+- Limpeza real do historico persistido pela GUI.
+- Restauracao do historico com roles corretos.
 
-3. Validar variaveis de ambiente antes de criar clientes.
+Pendente:
+
+1. Validar variaveis de ambiente antes de criar clientes.
    - Motivo: erro atual pode aparecer tarde e confuso.
    - Impacto: reduz suporte e falhas de execucao.
    - Complexidade: baixa.
 
-4. Corrigir roles do historico na GUI.
-   - Motivo: hoje respostas anteriores podem ser reenviadas como mensagens de usuario.
-   - Impacto: melhora qualidade das respostas e reduz confusao contextual.
+2. Evitar sobrescrita silenciosa dos arquivos OCR.
+   - Motivo: nomes repetidos ainda substituem arquivos anteriores.
+   - Impacto: reduz risco de perda de resultados.
    - Complexidade: baixa.
 
 ### Prioridade 1 - Melhorar confiabilidade
 
-1. Adicionar timeout em `requests.get`.
-   - Motivo: evitar travamento ao carregar site.
-   - Impacto: melhora experiencia e previsibilidade.
-   - Complexidade: baixa.
+Concluido em 27/06/2026:
 
-2. Tratar `None` em `page.extract_text()`.
-   - Motivo: PDFs sem texto em alguma pagina podem quebrar leitura.
-   - Impacto: melhora robustez documental.
-   - Complexidade: baixa.
+- Timeout em `requests.get`.
+- Tratamento de paginas PDF sem texto.
+- Parser de URLs do YouTube e compatibilidade com a API fixada.
+- Testes unitarios iniciais para `utils` e banco.
 
-3. Melhorar parser de URL do YouTube.
-   - Motivo: suportar `shorts`, `embed` e parametros variados.
-   - Impacto: reduz falha em uso real.
-   - Complexidade: baixa a media.
+Pendente:
 
-4. Criar testes unitarios para `utils` e banco.
-   - Motivo: capturar regressao rapidamente.
-   - Impacto: reduz custo de manutencao.
-   - Complexidade: media.
+1. Adicionar limites de tamanho para HTML, PDF e contexto enviado aos modelos.
+2. Expandir testes para providers, OCR e GUI.
 
 ### Prioridade 2 - Melhorar manutencao
 
@@ -1311,9 +1251,6 @@ Opiniao tecnica: MIT e adequada para projeto aberto, prototipo e reaproveitament
 
 Estas informacoes nao foram confirmadas nesta analise:
 
-- Qual versao exata do Python esta sendo usada no `venv`.
-- Se todas as dependencias do `requirements.txt` estao instaladas no `venv`.
-- Se o Tesseract OCR esta instalado no sistema e com idiomas necessarios.
 - Quais valores reais estao no `.env`, porque nao foram lidos para proteger chaves.
 - Se as chaves de API estao validas.
 - Se a GUI abre corretamente no ambiente atual.
@@ -1443,7 +1380,13 @@ python main.py --provider azure_openai --mode cli
 Validar sintaxe:
 
 ```powershell
-python -m py_compile main.py src\core\database.py src\core\bot_groq.py src\core\bot_gemini.py src\core\bot_azure_openai.py src\utils\scrapers.py src\utils\pdf_reader.py src\utils\ocr.py src\utils\file_writer.py src\gui\app_groq.py src\gui\app_gemini.py src\gui\app_azure_openai.py src\gui\markdown_renderer.py
+python -c "import ast, pathlib; files=[pathlib.Path('main.py'), *pathlib.Path('src').rglob('*.py'), *pathlib.Path('tests').rglob('*.py')]; [ast.parse(path.read_text(encoding='utf-8')) for path in files]"
+```
+
+Executar testes:
+
+```powershell
+python -m unittest discover -s tests -v
 ```
 
 Ver status do Git:
@@ -1454,16 +1397,16 @@ git status --short
 
 ## 36. Conclusao tecnica
 
-Fato: o CityBot ja possui uma estrutura funcional com entrada unificada, dois provedores de IA, GUI, CLI, utilitarios de conteudo e persistencia local.
+Fato: o CityBot ja possui uma estrutura funcional com entrada unificada, tres provedores de IA, GUI, CLI, utilitarios de conteudo e persistencia local.
 
 Inferencia: o projeto esta em fase de evolucao de prototipo para algo mais organizado, com vestigios de scripts anteriores e algumas inconsistencias de documentacao.
 
 Opiniao tecnica: o projeto merece uma rodada de hardening antes de crescer. A melhor sequencia e:
 
-1. Corrigir riscos pequenos e importantes, como historico da GUI, sanitizacao de arquivos, timeouts e validacao de `.env`.
-2. Criar testes unitarios para `utils` e banco.
+1. Validar configuracao dos providers antes de criar os clientes.
+2. Expandir testes para providers, OCR e GUI.
 3. Unificar GUI e providers com uma interface comum.
 4. Implementar controle de contexto para documentos grandes.
-5. Melhorar privacidade, logs e UX de historico.
+5. Melhorar privacidade e observabilidade.
 
 Essa ordem e superior porque entrega ganho real rapido, reduz risco de regressao e prepara a base para evolucoes maiores sem reescrever tudo.

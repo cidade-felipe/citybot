@@ -41,6 +41,9 @@ class CityBotGroq:
     def load_conversations(self):
         return self.db.load_conversations()
 
+    def limpar_conversas(self):
+        self.db.limpar_conversas()
+
     def chat(self):
         return ChatGroq(model=self.api_model)
 
@@ -65,7 +68,10 @@ class CityBotGroq:
         menu = 'MENU\n1. Bora conversar?\n2. Informações sobre um site\n3. Informações sobre um vídeo do YouTube\n4. Informações sobre um PDF\n5. OCR imagem\n6. Sair'
         print(menu)
         nova_informacao = ''
-        mensagens = list(self.load_conversations())
+        mensagens = []
+        for user_msg, bot_msg in self.load_conversations():
+            mensagens.append(('user', user_msg))
+            mensagens.append(('assistant', bot_msg))
         while True:
             opcao = input('\nEscolha uma opção: ')
             if opcao not in '123456':

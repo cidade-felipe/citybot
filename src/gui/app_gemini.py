@@ -51,6 +51,7 @@ class ModernCityBotGUI:
       self.create_chat_area()
       self.create_input_area()
       self.create_status_bar()
+      self.load_conversation_history()
       
       self.root.bind("<Return>", lambda e: None if e.state & 0x1 else self.send_message())
       self.root.bind("<Shift-Return>", lambda e: None)
@@ -310,6 +311,15 @@ class ModernCityBotGUI:
       
    def animate_startup(self):
       pass
+
+   def load_conversation_history(self):
+      for user_message, assistant_response in self.bot.load_conversations():
+         self.conversation_history.extend([
+            ('user', user_message),
+            ('assistant', assistant_response),
+         ])
+         self.add_message_bubble(user_message, is_user=True, animate=False)
+         self.add_message_bubble(assistant_response, is_user=False, animate=False)
       
    def on_frame_configure(self, event=None):
       self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox("all"))
@@ -420,7 +430,8 @@ class ModernCityBotGUI:
          response = self.bot.resposta_bot(messages, self.current_context)
          self.root.after(0, lambda: self.show_response(response, message))
       except Exception as e:
-         self.root.after(0, lambda: self.show_error(str(e)))
+         error_message = str(e)
+         self.root.after(0, lambda: self.show_error(error_message))
          
    def show_response(self, response, user_message):
       self.remove_loading_indicator()
@@ -440,6 +451,15 @@ class ModernCityBotGUI:
       self.current_context = ""
       self.context_label.config(text="Chat Livre")
       self.add_system_message("💬 Modo Chat Livre", "Pergunte o que quiser. Estou pronto para conversar!")
+
+   def set_loaded_context(self, content):
+      if not content or not content.strip():
+         raise ValueError('Não foi possível extrair conteúdo dessa fonte.')
+      self.current_context = content
+
+   def show_context_error(self, error_message):
+      self.status_label.config(text="●  Erro", fg=self.colors['error'])
+      messagebox.showerror("Erro", error_message)
       
    def load_website(self):
       self.show_input_dialog("Carregar Site", "Digite a URL do site:", self.process_website)
@@ -450,10 +470,11 @@ class ModernCityBotGUI:
       def load():
          try:
             content = self.bot.carrega_site(url)
-            self.current_context = content
+            self.set_loaded_context(content)
             self.root.after(0, lambda: self.on_context_loaded("Site", f"{url[:50]}..."))
          except Exception as e:
-            self.root.after(0, lambda: messagebox.showerror("Erro", str(e)))
+            error_message = str(e)
+            self.root.after(0, lambda: self.show_context_error(error_message))
       threading.Thread(target=load, daemon=True).start()
       
    def load_video(self):
@@ -465,10 +486,11 @@ class ModernCityBotGUI:
       def load():
          try:
             content = self.bot.carrega_video(url)
-            self.current_context = content
+            self.set_loaded_context(content)
             self.root.after(0, lambda: self.on_context_loaded("Vídeo", url))
          except Exception as e:
-            self.root.after(0, lambda: messagebox.showerror("Erro", str(e)))
+            error_message = str(e)
+            self.root.after(0, lambda: self.show_context_error(error_message))
       threading.Thread(target=load, daemon=True).start()
       
    def load_pdf(self):
@@ -478,10 +500,11 @@ class ModernCityBotGUI:
          def load():
             try:
                content = self.bot.carrega_pdf(filename)
-               self.current_context = content
+               self.set_loaded_context(content)
                self.root.after(0, lambda: self.on_context_loaded("PDF", os.path.basename(filename)))
             except Exception as e:
-               self.root.after(0, lambda: messagebox.showerror("Erro", str(e)))
+               error_message = str(e)
+               self.root.after(0, lambda: self.show_context_error(error_message))
          threading.Thread(target=load, daemon=True).start()
          
    def load_image_ocr(self):
@@ -492,10 +515,11 @@ class ModernCityBotGUI:
          def load():
             try:
                content = self.bot.carrega_imagem_ocr(filename, nome)
-               self.current_context = content
+               self.set_loaded_context(content)
                self.root.after(0, lambda: self.on_context_loaded("OCR", os.path.basename(filename)))
             except Exception as e:
-               self.root.after(0, lambda: messagebox.showerror("Erro", str(e)))
+               error_message = str(e)
+               self.root.after(0, lambda: self.show_context_error(error_message))
          threading.Thread(target=load, daemon=True).start()
          
    def on_context_loaded(self, tipo, nome):
@@ -504,8 +528,18 @@ class ModernCityBotGUI:
       self.status_label.config(text="●  Pronto", fg=self.colors['success'])
       
    def clear_chat(self):
+      if self.is_processing:
+         messagebox.showwarning("Aguarde", "Espere a resposta atual terminar antes de limpar a conversa.")
+         return
+
+      if not messagebox.askyesno("Limpar conversa", "Deseja apagar permanentemente todo o histórico de conversas?"):
+         return
+
+      self.bot.limpar_conversas()
       for widget in self.messages_frame.winfo_children(): widget.destroy()
       self.conversation_history = []
+      self.current_context = ""
+      self.context_label.config(text="Chat Livre")
       self.add_system_message("🗑️ Conversa Limpa", "O histórico foi apagado. Comece uma nova conversa!")
       
    def show_input_dialog(self, title, prompt, callback):

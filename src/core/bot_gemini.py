@@ -39,6 +39,9 @@ class CityBotGemini:
     def load_conversations(self):
         return self.db.load_conversations()
 
+    def limpar_conversas(self):
+        self.db.limpar_conversas()
+
     def limpar_banco(self):
         self.db.limpar_banco()
 
