@@ -1,8 +1,27 @@
 import sqlite3
+from pathlib import Path
+
+from src.utils.paths import project_path
+
+
+DEFAULT_DB_PATH = project_path('citybot.db')
+
+
+def _resolve_db_path(db_path):
+    if db_path is None:
+        return DEFAULT_DB_PATH
+    if db_path == ':memory:':
+        return db_path
+
+    path = Path(db_path)
+    if path.is_absolute():
+        return path
+    return project_path(path)
 
 class CityBotDatabase:
-    def __init__(self, db_path='citybot.db'):
-        self.conexao = sqlite3.connect(db_path, check_same_thread=False)
+    def __init__(self, db_path=None):
+        self.db_path = _resolve_db_path(db_path)
+        self.conexao = sqlite3.connect(self.db_path, check_same_thread=False)
         self.create_table()
 
     def create_table(self):

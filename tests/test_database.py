@@ -1,6 +1,7 @@
 import unittest
 
-from src.core.database import CityBotDatabase
+from src.core.database import DEFAULT_DB_PATH, CityBotDatabase
+from src.utils.paths import PROJECT_ROOT
 
 
 class CityBotDatabaseTest(unittest.TestCase):
@@ -17,6 +18,9 @@ class CityBotDatabaseTest(unittest.TestCase):
             self.database.load_conversations(),
             [('Pergunta', 'Resposta')],
         )
+
+    def test_caminho_padrao_do_banco_fica_na_raiz_do_projeto(self):
+        self.assertEqual(DEFAULT_DB_PATH, PROJECT_ROOT / 'citybot.db')
 
     def test_limpar_conversas_preserva_usuario_e_aceita_novos_registros(self):
         self.database.save_user('Pessoa', 'Preferências')

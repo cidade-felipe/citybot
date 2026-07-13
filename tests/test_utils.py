@@ -79,14 +79,19 @@ class FileWriterTest(unittest.TestCase):
         original_directory = os.getcwd()
 
         with tempfile.TemporaryDirectory() as temporary_directory:
-            os.chdir(temporary_directory)
+            raiz_dados = Path(temporary_directory)
+            diretorio_execucao = raiz_dados / 'execucao'
+            diretorio_execucao.mkdir()
+            os.chdir(diretorio_execucao)
             try:
-                resultado = salvar_texto('Conteúdo', '../arquivo')
+                with patch('src.utils.file_writer.TEXTOS_DIR', raiz_dados / 'textos'):
+                    resultado = salvar_texto('Conteúdo', '../arquivo')
 
                 self.assertEqual(resultado, 'Conteúdo')
-                self.assertTrue(Path('textos/arquivo.docx').exists())
-                self.assertTrue(Path('textos/arquivo.txt').exists())
-                self.assertFalse(Path('arquivo.txt').exists())
+                self.assertTrue((raiz_dados / 'textos/arquivo.docx').exists())
+                self.assertTrue((raiz_dados / 'textos/arquivo.txt').exists())
+                self.assertFalse((diretorio_execucao / 'textos/arquivo.txt').exists())
+                self.assertFalse((raiz_dados / 'arquivo.txt').exists())
             finally:
                 os.chdir(original_directory)
 

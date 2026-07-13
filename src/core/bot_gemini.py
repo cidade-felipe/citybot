@@ -10,16 +10,29 @@ from src.utils.pdf_reader import carrega_pdf
 from src.utils.ocr import carrega_imagem_ocr_gemini
 
 class CityBotGemini:
+    REQUIRED_ENV = (
+        'GEMINI_API_KEY',
+        'GEMINI_MODEL',
+    )
+
     def __init__(self):
         load_dotenv()
         self.api_key = os.getenv('GEMINI_API_KEY')
-        if not self.api_key:
-            print("ERRO: GEMINI_API_KEY não encontrada no arquivo .env")
-        
-        self.client = genai.Client(api_key=self.api_key)
         self.model_name = os.getenv('GEMINI_MODEL')
+        self.config_error = self._validate_config()
+
+        self.client = None
+        if not self.config_error:
+            self.client = genai.Client(api_key=self.api_key)
         
         self.db = CityBotDatabase()
+
+    def _validate_config(self):
+        missing = [name for name in self.REQUIRED_ENV if not os.getenv(name)]
+        if not missing:
+            return ''
+
+        return 'Variaveis de ambiente ausentes para Gemini: ' + ', '.join(missing)
 
     def carrega_site(self, url):
         return carrega_site(url)
@@ -31,6 +44,8 @@ class CityBotGemini:
         return carrega_pdf(path)
         
     def carrega_imagem_ocr(self, path, nome):
+        if self.config_error:
+            return ''
         return carrega_imagem_ocr_gemini(path, self.client, self.model_name)
 
     def save_conversation(self, user_message, assistant_response):
@@ -46,6 +61,9 @@ class CityBotGemini:
         self.db.limpar_banco()
 
     def resposta_bot(self, mensagens, documento=''):
+        if self.config_error:
+            return f'Erro de configuracao Gemini: {self.config_error}'
+
         instrucao_sistema = (
             f"Você é um assistente amigável chamado CityBot. "
             f"Você é capaz de conversar sobre qualquer assunto. "

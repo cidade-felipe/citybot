@@ -1,12 +1,14 @@
 import logging
 import re
-from pathlib import Path
 
 from docx import Document
+
+from src.utils.paths import project_path
 
 
 logger = logging.getLogger(__name__)
 INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+TEXTOS_DIR = project_path('textos')
 
 
 def _nome_seguro(nome):
@@ -25,7 +27,7 @@ def _nome_seguro(nome):
 
 def salvar_texto(texto, nome):
     nome_seguro = _nome_seguro(nome)
-    pasta_textos = Path('textos')
+    pasta_textos = TEXTOS_DIR
 
     try:
         pasta_textos.mkdir(exist_ok=True)

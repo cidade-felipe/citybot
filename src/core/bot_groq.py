@@ -13,12 +13,26 @@ from src.utils.ocr import carrega_imagem_ocr_tesseract
 from src.utils.file_writer import salvar_texto
 
 class CityBotGroq:
+    REQUIRED_ENV = (
+        'GROQ_API_KEY',
+        'GROQ_API_MODEL',
+    )
+
     def __init__(self):
         load_dotenv()
+        self.api_key = os.getenv('GROQ_API_KEY')
         self.api_model = os.getenv('GROQ_API_MODEL')
+        self.config_error = self._validate_config()
         
         self.db = CityBotDatabase()
         self.memory = ConversationBufferWindowMemory(k=1000000)
+
+    def _validate_config(self):
+        missing = [name for name in self.REQUIRED_ENV if not os.getenv(name)]
+        if not missing:
+            return ''
+
+        return 'Variaveis de ambiente ausentes para Groq: ' + ', '.join(missing)
 
     def carrega_site(self, url_site):
         return carrega_site(url_site)
@@ -48,6 +62,9 @@ class CityBotGroq:
         return ChatGroq(model=self.api_model)
 
     def resposta_bot(self, mensagens, documento=''):
+        if self.config_error:
+            return f'Erro de configuracao Groq: {self.config_error}'
+
         mensagem_sistema = 'Você é um assistente amigável chamado CityBot, capaz de conversar sobre qualquer assunto, inclusive qualquer informação sobre {informacoes}.'
         informacoes = documento or ''
         mensagem_modelo = [('system', mensagem_sistema.format(informacoes=informacoes))]

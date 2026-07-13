@@ -2,7 +2,7 @@
 
 Arquivo criado em 03/06/2026.
 
-Ultima atualizacao documentada: 27/06/2026, apos correcoes de ingestao, historico, seguranca de arquivos e inclusao de testes automatizados.
+Ultima atualizacao documentada: 13/07/2026, apos padronizacao de caminhos de dados pela raiz do projeto e validacao explicita de configuracao nos providers Gemini e Groq.
 
 Este documento foi criado para servir como memoria tecnica detalhada do projeto `citybot`. Ele deve ser atualizado sempre que houver alteracao relevante no codigo, dependencias, arquitetura, comportamento, dados, riscos conhecidos ou forma de execucao.
 
@@ -60,6 +60,8 @@ Fato: em 27/06/2026, o `venv` antigo, que referenciava uma instalacao removida d
 
 Fato: existe uma pasta `Backup` na raiz.
 
+Fato: em 13/07/2026, os arquivos alterados foram preservados em `Backup/13_07_2026` antes das mudancas.
+
 Fato: existe um arquivo `.env` na raiz, mas os valores dele nao foram lidos neste estudo para evitar exposicao de chaves ou configuracoes sensiveis. As variaveis esperadas foram inferidas a partir do codigo e do `README.md`.
 
 Fato: existe um banco local `citybot.db`. A consulta feita leu somente schema e contagem de linhas, nao o conteudo das conversas.
@@ -80,9 +82,11 @@ Fato: a validacao de sintaxe com `python -m py_compile` passou nos arquivos Pyth
 - `src/utils/pdf_reader.py`.
 - `src/utils/ocr.py`.
 - `src/utils/file_writer.py`.
+- `src/utils/paths.py`.
 - `src/gui/app_groq.py`.
 - `src/gui/app_gemini.py`.
 - `src/gui/app_azure_openai.py`.
+- `src/gui/markdown_renderer.py`.
 
 ## 3. Estrutura de arquivos observada
 
@@ -104,6 +108,7 @@ citybot/
 ├── tests/
 │   ├── test_database.py
 │   ├── test_gui_history.py
+│   ├── test_provider_config.py
 │   └── test_utils.py
 └── src/
     ├── core/
@@ -121,6 +126,7 @@ citybot/
     │   ├── citybot_logo.svg
     │   └── logo.png
     └── utils/
+        ├── paths.py
         ├── scrapers.py
         ├── pdf_reader.py
         ├── ocr.py
@@ -215,6 +221,7 @@ Fato: o codigo espera as seguintes variaveis:
 ```text
 GEMINI_API_KEY
 GEMINI_MODEL
+GROQ_API_KEY
 GROQ_API_MODEL
 AZURE_OPENAI_API_KEY
 AZURE_ENDPOINT
@@ -223,26 +230,18 @@ AZURE_DEPLOYMENT
 AZURE_MAX_OUTPUT_TOKENS
 ```
 
-Fato: o `README.md` tambem documenta:
-
-```text
-GROQ_API_KEY
-```
-
 Fato: `CityBotGemini` le explicitamente `GEMINI_API_KEY` e `GEMINI_MODEL`.
 
-Fato: `CityBotGroq` le explicitamente `GROQ_API_MODEL`. A chave `GROQ_API_KEY` nao e lida diretamente nesse arquivo, mas o `ChatGroq` normalmente depende dela no ambiente.
+Fato: `CityBotGroq` le explicitamente `GROQ_API_KEY` e `GROQ_API_MODEL`.
 
 Fato: `CityBotAzureOpenAI` le explicitamente `AZURE_OPENAI_API_KEY`, `AZURE_ENDPOINT`, `AZURE_API_VERSION`, `AZURE_DEPLOYMENT` e opcionalmente `AZURE_MAX_OUTPUT_TOKENS`.
 
-Opiniao tecnica: o projeto deveria validar todas as variaveis obrigatorias logo no inicio e mostrar erro claro antes de tentar criar clientes de API. Isso evita mensagens confusas e reduz tempo perdido em suporte.
+Fato: em 13/07/2026, Gemini e Groq passaram a validar variaveis obrigatorias no construtor, guardar `config_error` e retornar erro claro em `resposta_bot` quando a configuracao esta incompleta.
 
-Risco real:
+Risco residual:
 
-- Se `GEMINI_API_KEY` estiver ausente, o codigo imprime erro, mas ainda tenta criar `genai.Client(api_key=self.api_key)`.
-- Se `GEMINI_MODEL` estiver ausente, chamadas ao Gemini podem falhar em tempo de execucao.
-- Se `GROQ_API_MODEL` ou `GROQ_API_KEY` estiverem ausentes, a falha pode acontecer somente na chamada ao modelo.
-- Se variaveis obrigatorias do Azure OpenAI estiverem ausentes, `CityBotAzureOpenAI` nao cria cliente e retorna uma mensagem de erro de configuracao ao usuario.
+- A presenca das variaveis nao garante que chaves, deployments ou modelos estejam validos nos provedores externos.
+- A validacao evita erro confuso por variavel ausente, mas nao substitui testes reais de conectividade.
 
 ## 8. Dependencias
 
@@ -360,11 +359,13 @@ Fato: o construtor abre conexao com:
 sqlite3.connect(db_path, check_same_thread=False)
 ```
 
-Fato: o caminho padrao do banco e:
+Fato: o caminho padrao do banco e resolvido pela raiz do projeto:
 
 ```text
-citybot.db
+PROJECT_ROOT/citybot.db
 ```
+
+Fato: `src/utils/paths.py` define `PROJECT_ROOT` a partir da localizacao do pacote `src`, e `CityBotDatabase` usa esse caminho por padrao. Caminhos relativos customizados tambem sao resolvidos a partir da raiz do projeto. O valor especial `:memory:` continua preservado para testes SQLite em memoria.
 
 Fato: as tabelas criadas sao:
 
@@ -424,9 +425,9 @@ Fato: no construtor:
 
 - Chama `load_dotenv()`.
 - Le `GEMINI_API_KEY`.
-- Imprime erro se a chave nao for encontrada.
-- Cria `genai.Client(api_key=self.api_key)`.
 - Le `GEMINI_MODEL`.
+- Valida variaveis obrigatorias em `config_error`.
+- Cria `genai.Client(api_key=self.api_key)` somente se a configuracao estiver completa.
 - Cria instancia de `CityBotDatabase`.
 
 Fato: metodos de carregamento delegam para utilitarios:
@@ -460,11 +461,16 @@ Fato: se houver excecao na API, retorna texto no formato:
 Erro na API do Gemini: ...
 ```
 
+Fato: se `GEMINI_API_KEY` ou `GEMINI_MODEL` estiverem ausentes, `resposta_bot` retorna texto no formato:
+
+```text
+Erro de configuracao Gemini: ...
+```
+
 Opiniao tecnica: retornar erro como texto para o usuario e simples, mas mistura resposta de assistente com falha tecnica. Para producao, seria melhor retornar um objeto ou excecao tratada pela camada de interface, permitindo log tecnico e mensagem amigavel separada.
 
 Risco real:
 
-- A criacao do cliente pode ocorrer mesmo sem chave.
 - Nao ha timeout ou politica de retry configurada no nivel do app.
 - O contexto completo do documento e inserido diretamente na instrucao do sistema, sem chunking, sumarizacao ou controle de tamanho.
 - Se o documento for grande, pode haver alto custo, lentidao ou erro por limite de contexto.
@@ -478,7 +484,9 @@ Fato: a classe principal e `CityBotGroq`.
 Fato: no construtor:
 
 - Chama `load_dotenv()`.
+- Le `GROQ_API_KEY`.
 - Le `GROQ_API_MODEL`.
+- Valida variaveis obrigatorias em `config_error`.
 - Cria `CityBotDatabase`.
 - Cria `ConversationBufferWindowMemory(k=1000000)`.
 
@@ -510,14 +518,19 @@ chain.invoke({'informacoes': informacoes}).content
 
 Fato: o OCR na versao Groq chama Tesseract e, se houver texto, salva arquivos via `salvar_texto(texto_final, nome)`.
 
+Fato: se `GROQ_API_KEY` ou `GROQ_API_MODEL` estiverem ausentes, `resposta_bot` retorna texto no formato:
+
+```text
+Erro de configuracao Groq: ...
+```
+
 Risco real:
 
 - `ConversationBufferWindowMemory(k=1000000)` e um valor extremamente alto e pode manter historico demais em memoria.
 - A memoria LangChain e usada no CLI, mas o prompt enviado ao modelo tambem usa `mensagens`, entao ha potencial de redundancia conceitual.
-- Nao ha validacao explicita de `GROQ_API_MODEL`.
 - O uso de contexto completo do documento tambem pode estourar limite de tokens.
 
-Opiniao tecnica: o provider Groq deveria seguir a mesma estrategia de validacao do Gemini, mas de forma mais rigorosa, validando `GROQ_API_KEY` e `GROQ_API_MODEL` antes de permitir chat.
+Opiniao tecnica: a validacao explicita reduziu erro operacional no inicio da conversa, mas o provider ainda precisa de testes mockados do caminho feliz e melhor controle de contexto.
 
 ## 13.1 Provider Azure OpenAI
 
@@ -701,13 +714,15 @@ Arquivo: `src/utils/file_writer.py`.
 
 Fato: `salvar_texto(texto, nome)`:
 
-- Cria pasta `textos` se nao existir.
+- Cria pasta `PROJECT_ROOT/textos` se nao existir.
 - Cria documento Word com `python-docx`.
 - Normaliza o nome para um basename seguro.
 - Remove extensoes `.docx` e `.txt` informadas pelo usuario para evitar duplicacao.
-- Salva `textos/{nome_seguro}.docx`.
-- Salva `textos/{nome_seguro}.txt`.
+- Salva `PROJECT_ROOT/textos/{nome_seguro}.docx`.
+- Salva `PROJECT_ROOT/textos/{nome_seguro}.txt`.
 - Retorna o texto original.
+
+Fato: desde 13/07/2026, a pasta de saida de OCR nao depende mais do diretorio atual de execucao. Ela usa `TEXTOS_DIR = project_path('textos')`.
 
 Fato: em caso de erro de escrita, registra a falha com `logging` e retorna string vazia.
 
@@ -971,7 +986,7 @@ Pontos de atencao:
 - Cobertura automatizada ainda concentrada em banco e utilitarios.
 - Alguns providers e o OCR ainda tratam erros com `print` ou mensagens genericas.
 - Logging ainda nao possui configuracao central.
-- Falta de validacao de configuracao.
+- A validacao de configuracao cobre variaveis ausentes em Gemini, Groq e Azure OpenAI, mas ainda nao valida credenciais contra as APIs externas.
 - Falta de limites de contexto e tamanho de entrada.
 - Falta de timestamps e metadados no banco.
 
@@ -992,11 +1007,19 @@ Fato: os testes cobrem:
 - parser de URLs do YouTube;
 - uso da API de transcricao compativel com a dependencia;
 - paginas PDF sem texto;
-- contencao de arquivos OCR dentro de `textos/`.
+- contencao de arquivos OCR dentro de `PROJECT_ROOT/textos/`;
+- caminho padrao do banco na raiz do projeto;
+- erro claro quando Gemini ou Groq estao sem variaveis obrigatorias.
 
 Fato: em 27/06/2026, os 10 testes passaram e 16 arquivos Python de producao e teste passaram na validacao de AST.
 
-Limitacao: ainda faltam testes dos providers, OCR e fluxos completos da GUI.
+Fato: em 13/07/2026, os 13 testes passaram com:
+
+```powershell
+venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+Limitacao: ainda faltam testes de chamadas reais ou mockadas do caminho feliz dos providers, OCR e fluxos completos da GUI.
 
 ## 24. Observabilidade e logs
 
@@ -1083,11 +1106,18 @@ Concluido em 27/06/2026:
 - Limpeza real do historico persistido pela GUI.
 - Restauracao do historico com roles corretos.
 
+Concluido em 13/07/2026:
+
+- `citybot.db` padronizado na raiz do projeto quando o caminho padrao e usado.
+- Arquivos OCR padronizados em `PROJECT_ROOT/textos`, sem depender do diretorio atual.
+- Gemini valida `GEMINI_API_KEY` e `GEMINI_MODEL` antes de criar cliente.
+- Groq valida `GROQ_API_KEY` e `GROQ_API_MODEL` antes de chamar o modelo.
+
 Pendente:
 
-1. Validar variaveis de ambiente antes de criar clientes.
-   - Motivo: erro atual pode aparecer tarde e confuso.
-   - Impacto: reduz suporte e falhas de execucao.
+1. Validar caminho feliz dos providers com mocks de API.
+   - Motivo: a validacao de variaveis cobre ausencia de configuracao, mas nao garante que request e parsing estejam corretos.
+   - Impacto: reduz risco de regressao ao atualizar SDKs.
    - Complexidade: baixa.
 
 2. Evitar sobrescrita silenciosa dos arquivos OCR.
@@ -1282,13 +1312,13 @@ Fato: neste caso especifico, `codex.md` foi criado do zero, entao nao havia vers
 Validacao minima recomendada apos mudancas em codigo:
 
 ```powershell
-python -m py_compile main.py src\core\database.py src\core\bot_groq.py src\core\bot_gemini.py src\core\bot_azure_openai.py src\utils\scrapers.py src\utils\pdf_reader.py src\utils\ocr.py src\utils\file_writer.py src\gui\app_groq.py src\gui\app_gemini.py src\gui\app_azure_openai.py src\gui\markdown_renderer.py
+venv\Scripts\python.exe -m py_compile main.py src\core\database.py src\core\bot_groq.py src\core\bot_gemini.py src\core\bot_azure_openai.py src\utils\paths.py src\utils\scrapers.py src\utils\pdf_reader.py src\utils\ocr.py src\utils\file_writer.py src\gui\app_groq.py src\gui\app_gemini.py src\gui\app_azure_openai.py src\gui\markdown_renderer.py
 ```
 
 Validacao adicional recomendada quando houver testes:
 
 ```powershell
-python -m pytest
+venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
 ## 34. Checklist rapido para evoluir sem quebrar
