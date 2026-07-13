@@ -49,7 +49,7 @@ class GuiHistoryTest(unittest.TestCase):
                 gui.add_system_message = Mock()
 
                 with patch(
-                    f'{gui_class.__module__}.messagebox.askyesno',
+                    f'{gui_class.clear_chat.__module__}.messagebox.askyesno',
                     return_value=True,
                 ):
                     gui.clear_chat()

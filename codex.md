@@ -2,7 +2,7 @@
 
 Arquivo criado em 03/06/2026.
 
-Ultima atualizacao documentada: 13/07/2026, apos padronizacao de caminhos de dados pela raiz do projeto e validacao explicita de configuracao nos providers Gemini e Groq.
+Ultima atualizacao documentada: 13/07/2026, apos padronizacao de caminhos de dados, validacao explicita de configuracao nos providers Gemini e Groq e modernizacao da GUI com `ttk`.
 
 Este documento foi criado para servir como memoria tecnica detalhada do projeto `citybot`. Ele deve ser atualizado sempre que houver alteracao relevante no codigo, dependencias, arquitetura, comportamento, dados, riscos conhecidos ou forma de execucao.
 
@@ -27,7 +27,7 @@ Fato: o ponto de entrada ativo e `main.py`, que permite escolher:
 - Provedor: `gemini`, `groq` ou `azure_openai`.
 - Modo: `gui` ou `cli`.
 
-Fato: a interface grafica ativa usa Tkinter. Existem dois arquivos de GUI completos e um app Azure que reaproveita a base visual do Gemini:
+Fato: a interface grafica ativa usa Tkinter com componentes `ttk`. A base visual fica em `src/gui/app_gemini.py`; os providers Groq e Azure OpenAI reaproveitam essa base:
 
 - `src/gui/app_gemini.py`.
 - `src/gui/app_groq.py`.
@@ -742,17 +742,21 @@ Arquivos:
 - `src/gui/app_gemini.py`.
 - `src/gui/app_groq.py`.
 
-Fato: ambos definem uma classe chamada `ModernCityBotGUI`.
+Fato: os tres providers GUI expõem uma classe chamada `ModernCityBotGUI`.
+
+Fato: desde 13/07/2026, `src/gui/app_gemini.py` concentra a base visual. `src/gui/app_groq.py` e `src/gui/app_azure_openai.py` são wrappers que injetam `CityBotGroq` e `CityBotAzureOpenAI` nessa base comum.
 
 Fato: a GUI usa:
 
-- Tema escuro.
+- Tema escuro configurado por `ttk.Style`.
 - Sidebar com fontes de dados.
 - Area de chat com bolhas.
 - Entrada de texto.
 - Barra de status.
 - Logo carregado de `src/figures/citybot_logo.png`.
 - Threads para chamadas demoradas.
+
+Fato: em 13/07/2026, a interface foi modernizada com `ttk.Frame`, `ttk.Label`, `ttk.Button`, `ttk.Entry`, `ttk.Scrollbar` e estilos nomeados para sidebar, botões, status, diálogo, cartões e bolhas. `tk.Canvas`, `tk.Text` e `tk.Toplevel` continuam sendo usados onde são mais adequados para rolagem, edição/renderização de texto e janelas auxiliares.
 
 Fato: em 03/06/2026, foi criado `src/gui/markdown_renderer.py` para renderizar Markdown basico dentro da GUI usando apenas Tkinter.
 
@@ -780,9 +784,7 @@ Fato: em 08/06/2026, `src/gui/markdown_renderer.py` passou a detectar blocos de 
 
 Opiniao tecnica: a implementacao de tabela e propositalmente simples. Ela cobre bem tabelas comuns geradas por LLMs, mas nao tenta implementar todo o CommonMark, como pipes escapados dentro de celulas, alinhamento por coluna ou tabelas com conteudo multiline.
 
-Fato: `app_groq.py` foi corrigido para importar `Path` de `pathlib`, e nao de `anyio`.
-
-Fato: `app_gemini.py` e `app_groq.py` agora resolvem o logo com base em `root_path`, usando `Path(root_path) / 'src' / 'figures' / 'citybot_logo.png`.
+Fato: a base visual em `app_gemini.py` resolve o logo com base em `root_path`, usando `Path(root_path) / 'src' / 'figures' / 'citybot_logo.png`. Como Groq e Azure reutilizam essa base, os tres providers usam o mesmo carregamento de logo.
 
 Fato: em 03/06/2026, `src/gui/app_azure_openai.py` foi ajustado para adicionar a raiz do projeto ao `sys.path` antes dos imports `src.*`. Isso permite executar diretamente:
 
@@ -824,9 +826,11 @@ Fato: atualizacoes de interface vindas de threads usam em varios pontos `self.ro
 
 Risco real:
 
-- A duplicacao entre `app_gemini.py` e `app_groq.py` aumenta custo de manutencao.
-- Correcoes feitas em uma GUI podem ficar faltando na outra.
 - O Markdown implementado cobre os casos comuns, incluindo tabelas simples, mas ainda nao oferece imagens embutidas, notas de rodape, celulas multiline ou parser CommonMark completo.
+
+Risco residual:
+
+- A base visual agora e compartilhada entre os tres providers; isso reduz duplicacao, mas faz qualquer regressao em `app_gemini.py` afetar Gemini, Groq e Azure ao mesmo tempo.
 
 Fato: apos confirmacao do usuario, `clear_chat()` apaga somente as conversas persistidas, limpa a tela, o historico em memoria e o contexto carregado. Perfis de usuario sao preservados. A limpeza e bloqueada enquanto uma resposta esta em processamento.
 
@@ -1018,6 +1022,8 @@ Fato: em 13/07/2026, os 13 testes passaram com:
 ```powershell
 venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
+
+Fato: em 13/07/2026, apos a modernizacao com `ttk`, a GUI base foi instanciada com `root.withdraw()` e bot falso para validar construcao de estilos, widgets e layout sem chamar APIs externas.
 
 Limitacao: ainda faltam testes de chamadas reais ou mockadas do caminho feliz dos providers, OCR e fluxos completos da GUI.
 
