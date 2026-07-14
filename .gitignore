@@ -136,6 +136,12 @@ ENV/
 env.bak/
 venv.bak/
 
+# Browser cookie exports
+cookies.txt
+youtube_cookies.txt
+*_cookies.txt
+*.cookies.txt
+
 # Spyder project settings
 .spyderproject
 .spyproject

@@ -2,7 +2,7 @@
 
 Arquivo criado em 03/06/2026.
 
-Ultima atualizacao documentada: 13/07/2026, apos padronizacao de caminhos de dados, validacao explicita de configuracao nos providers Gemini e Groq e modernizacao da GUI com `ttk`.
+Ultima atualizacao documentada: 13/07/2026, apos migracao da GUI ativa de Tkinter/ttk para PySide6, padronizacao de caminhos de dados e validacao explicita de configuracao nos providers Gemini e Groq.
 
 Este documento foi criado para servir como memoria tecnica detalhada do projeto `citybot`. Ele deve ser atualizado sempre que houver alteracao relevante no codigo, dependencias, arquitetura, comportamento, dados, riscos conhecidos ou forma de execucao.
 
@@ -27,8 +27,9 @@ Fato: o ponto de entrada ativo e `main.py`, que permite escolher:
 - Provedor: `gemini`, `groq` ou `azure_openai`.
 - Modo: `gui` ou `cli`.
 
-Fato: a interface grafica ativa usa Tkinter com componentes `ttk`. A base visual fica em `src/gui/app_gemini.py`; os providers Groq e Azure OpenAI reaproveitam essa base:
+Fato: a interface grafica ativa usa PySide6. A base visual fica em `src/gui/app_pyside.py`; os arquivos dos providers sao wrappers leves sobre essa base:
 
+- `src/gui/app_pyside.py`.
 - `src/gui/app_gemini.py`.
 - `src/gui/app_groq.py`.
 - `src/gui/app_azure_openai.py`.
@@ -86,6 +87,7 @@ Fato: a validacao de sintaxe com `python -m py_compile` passou nos arquivos Pyth
 - `src/gui/app_groq.py`.
 - `src/gui/app_gemini.py`.
 - `src/gui/app_azure_openai.py`.
+- `src/gui/app_pyside.py`.
 - `src/gui/markdown_renderer.py`.
 
 ## 3. Estrutura de arquivos observada
@@ -117,6 +119,7 @@ citybot/
     │   ├── bot_gemini.py
     │   └── bot_azure_openai.py
     ├── gui/
+    │   ├── app_pyside.py
     │   ├── app_groq.py
     │   ├── app_gemini.py
     │   ├── app_azure_openai.py
@@ -181,7 +184,7 @@ Fato: pelo `README.md` e pelo codigo, o CityBot suporta os fluxos abaixo:
 - Perguntas sobre conteudo de PDF.
 - OCR de imagem.
 - Historico persistido em SQLite.
-- Uso por GUI Tkinter ou CLI.
+- Uso por GUI PySide6 ou CLI.
 
 Inferencia: o publico-alvo inicial parece ser o proprio desenvolvedor ou usuarios internos que precisam consultar conteudo de forma rapida, em vez de um produto SaaS multiusuario.
 
@@ -228,6 +231,9 @@ AZURE_ENDPOINT
 AZURE_API_VERSION
 AZURE_DEPLOYMENT
 AZURE_MAX_OUTPUT_TOKENS
+CITYBOT_YOUTUBE_COOKIES_BROWSER
+CITYBOT_YOUTUBE_COOKIES_PROFILE
+CITYBOT_YOUTUBE_COOKIES_FILE
 ```
 
 Fato: `CityBotGemini` le explicitamente `GEMINI_API_KEY` e `GEMINI_MODEL`.
@@ -235,6 +241,10 @@ Fato: `CityBotGemini` le explicitamente `GEMINI_API_KEY` e `GEMINI_MODEL`.
 Fato: `CityBotGroq` le explicitamente `GROQ_API_KEY` e `GROQ_API_MODEL`.
 
 Fato: `CityBotAzureOpenAI` le explicitamente `AZURE_OPENAI_API_KEY`, `AZURE_ENDPOINT`, `AZURE_API_VERSION`, `AZURE_DEPLOYMENT` e opcionalmente `AZURE_MAX_OUTPUT_TOKENS`.
+
+Fato: `CITYBOT_YOUTUBE_COOKIES_BROWSER`, `CITYBOT_YOUTUBE_COOKIES_PROFILE` e `CITYBOT_YOUTUBE_COOKIES_FILE` sao opcionais. Quando definidos, o fallback de video via `yt-dlp` tenta usar cookies para reduzir bloqueios do YouTube em transcricoes anonimas.
+
+Fato: `CITYBOT_YOUTUBE_COOKIES_FILE` tem prioridade sobre `CITYBOT_YOUTUBE_COOKIES_BROWSER`, porque evita acessar diretamente o banco de cookies vivo do Chrome/Edge.
 
 Fato: em 13/07/2026, Gemini e Groq passaram a validar variaveis obrigatorias no construtor, guardar `config_error` e retornar erro claro em `resposta_bot` quando a configuracao esta incompleta.
 
@@ -257,6 +267,7 @@ Dependencias principais:
 - `requests`: leitura de paginas web.
 - `beautifulsoup4`: parse HTML.
 - `youtube-transcript-api`: transcricao do YouTube.
+- `yt-dlp`: fallback para metadados e URLs de legendas do YouTube.
 - `truststore`: validacao HTTPS usando certificados confiaveis do sistema operacional.
 - `pypdf`: leitura de PDF.
 - `opencv-python`: pre-processamento de imagem para OCR Tesseract.
@@ -265,8 +276,11 @@ Dependencias principais:
 - `python-docx`: escrita de `.docx`.
 - `pyperclip`: leitura/limpeza da area de transferencia no CLI.
 - `pillow`: imagens na GUI e OCR Gemini.
+- `PySide6`: interface grafica desktop baseada em Qt.
 
-Fato: `tkinter` nao aparece em `requirements.txt`, pois normalmente faz parte da biblioteca padrao do Python em instalacoes desktop.
+Fato: `PySide6==6.11.1` foi adicionado ao `requirements.txt` em 13/07/2026. `tkinter` permanece apenas em `src/gui/markdown_renderer.py`, arquivo legado que nao e mais usado pela GUI ativa.
+
+Fato: `yt-dlp==2026.7.4` foi adicionado ao `requirements.txt` em 13/07/2026 como fallback para extracao de legendas do YouTube.
 
 Fato: o Tesseract OCR e dependencia externa do sistema, nao apenas pacote Python.
 
@@ -285,7 +299,8 @@ Fato: a arquitetura atual pode ser entendida em quatro camadas:
 ```text
 main.py
   ├── seleciona provider e modo
-  ├── GUI Tkinter
+  ├── GUI PySide6
+  │   ├── src/gui/app_pyside.py
   │   ├── src/gui/app_gemini.py
   │   ├── src/gui/app_groq.py
   │   └── src/gui/app_azure_openai.py
@@ -303,11 +318,11 @@ main.py
 
 Inferencia: `main.py` foi desenhado para ser um roteador simples, mantendo detalhes de GUI e LLM fora do ponto de entrada.
 
-Opiniao tecnica: a separacao `core`, `gui` e `utils` e boa. O maior problema arquitetural atual e duplicacao: as GUIs Gemini e Groq repetem praticamente a mesma estrutura visual e comportamento.
+Opiniao tecnica: a separacao `core`, `gui` e `utils` e boa. A duplicacao visual principal foi reduzida em 13/07/2026 com `app_pyside.py`, que concentra a interface grafica e recebe a factory do bot.
 
 Melhor caminho tecnico:
 
-- Criar uma GUI unica que recebe uma instancia de bot ou uma factory de bot.
+- Manter a GUI unica recebendo uma instancia de bot ou uma factory de bot.
 - Manter `CityBotGemini` e `CityBotGroq` como adaptadores de provider.
 - Definir uma interface comum de bot, por exemplo `resposta_bot`, `carrega_site`, `carrega_video`, `carrega_pdf`, `carrega_imagem_ocr`, `save_conversation`.
 
@@ -316,11 +331,11 @@ Trade-off:
 - Complexidade: baixa a media.
 - Custo de implementacao: moderado, porque exige mexer em GUI e inicializacao.
 - Manutencao: melhora bastante, pois bugs visuais seriam corrigidos uma vez.
-- Risco: medio, porque GUI Tkinter e sensivel a pequenas mudancas de callback e threading.
+- Risco: medio, porque GUI desktop com threads exige cuidado para atualizar a interface somente pela thread principal.
 
 ## 10. `main.py`
 
-Fato: `main.py` importa `argparse`, `sys`, `os` e `tkinter`.
+Fato: `main.py` importa `argparse`, `sys` e `os`.
 
 Fato: adiciona a raiz do projeto ao `sys.path`:
 
@@ -328,13 +343,12 @@ Fato: adiciona a raiz do projeto ao `sys.path`:
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 ```
 
-Fato: `run_gui(provider)`:
+Fato: desde 13/07/2026, `run_gui(provider)`:
 
-- Cria `tk.Tk()`.
-- Se provider for `gemini`, importa `ModernCityBotGUI` de `src.gui.app_gemini`.
-- Se provider for `azure_openai`, importa `ModernCityBotGUI` de `src.gui.app_azure_openai`.
-- Caso contrario, importa `ModernCityBotGUI` de `src.gui.app_groq`.
-- Inicia `root.mainloop()`.
+- Cria ou reutiliza um `QApplication`.
+- Seleciona a factory do bot conforme o provider.
+- Instancia `src.gui.app_pyside.ModernCityBotGUI`.
+- Exibe a janela e retorna `app.exec()`.
 
 Fato: `run_cli(provider)`:
 
@@ -578,7 +592,7 @@ Trade-offs:
 
 - Complexidade: baixa, porque segue o mesmo contrato dos outros bots.
 - Custo de implementacao: baixo a medio, por reaproveitar utilitarios existentes.
-- Manutencao: boa, pois a GUI Azure reaproveita a base visual do Gemini.
+- Manutencao: boa, pois a GUI Azure reaproveita a base visual unica em `app_pyside.py`.
 - Escalabilidade: ainda limitada por prompt textual completo, sem chunking ou recuperacao.
 - Risco: depende da versao do pacote `openai` suportar `client.responses.create` com Azure OpenAI.
 
@@ -601,7 +615,12 @@ Fato: se ocorrer erro, registra a falha com `logging` e retorna string vazia.
 Fato: `carrega_video(url_video)`:
 
 - Extrai `video_id` de URLs `watch`, `youtu.be`, `shorts`, `embed` e `live`.
-- Usa `YouTubeTranscriptApi().fetch(video_id, languages=['pt', 'en'])`, compativel com a versao `1.2.4` fixada.
+- Tenta primeiro `YouTubeTranscriptApi().fetch(video_id, languages=['pt', 'pt-BR', 'en'])`, compativel com a versao `1.2.4` fixada.
+- Se a transcricao direta falhar ou vier vazia, usa `yt-dlp` para buscar metadados do video e selecionar legendas oficiais ou automaticas.
+- O fallback via `yt-dlp` prioriza legendas em portugues e ingles, baixa somente o arquivo de legenda pela propria camada de rede do `yt-dlp` e extrai texto de formatos como `json3`, `vtt`, `srv3` e `ttml`.
+- Quando o YouTube retorna `HTTP 429 Too Many Requests`, a GUI exibe uma mensagem especifica sugerindo configurar `CITYBOT_YOUTUBE_COOKIES_BROWSER`.
+- Quando o `yt-dlp` nao consegue copiar o banco de cookies do Chrome/Edge, a GUI exibe uma mensagem especifica sugerindo fechar o navegador ou usar `CITYBOT_YOUTUBE_COOKIES_FILE`.
+- Quando `CITYBOT_YOUTUBE_COOKIES_FILE` aponta para arquivo fora do formato Netscape cookies.txt, a GUI exibe uma mensagem especifica explicando que JSON, HTML ou SQLite nao funcionam.
 - Usa `truststore` para validar HTTPS com o repositorio de certificados do sistema operacional.
 - Concatena textos da transcricao.
 
@@ -614,8 +633,12 @@ Risco real em sites:
 
 Risco real em YouTube:
 
-- Videos sem transcricao em `pt` ou `en` retornam erro.
+- Videos sem transcricao ou legenda disponivel em idiomas suportados continuam sem conteudo.
 - Transcricoes podem estar indisponiveis por configuracao do video.
+- O YouTube muda com frequencia; `yt-dlp` pode exigir atualizacao caso a extracao de metadados quebre.
+- Usar cookies do navegador melhora alguns casos de bloqueio, mas depende do estado local do navegador e pode falhar se o perfil estiver bloqueado, deslogado ou indisponivel.
+- Em Windows, Chrome/Edge podem bloquear o arquivo `Network/Cookies` enquanto estao abertos. Nesses casos, fechar totalmente o navegador ou usar um arquivo `cookies.txt` exportado e mais robusto.
+- Arquivos de cookies exportados sao sensiveis e ficam ignorados pelo Git por padroes como `cookies.txt`, `youtube_cookies.txt`, `*_cookies.txt` e `*.cookies.txt`.
 
 Opiniao tecnica: para uso pessoal, a abordagem e simples e adequada. Para ambiente real, validacao de URL, limites de tamanho e protecao contra enderecos internos ainda trariam ganho de seguranca.
 
@@ -735,64 +758,41 @@ Opiniao tecnica: o risco de path traversal foi corrigido. Para evitar perda por 
 
 Impacto pratico: isso evita perda de documentos OCR e reduz risco de gravar arquivo fora da pasta esperada.
 
-## 18. Interface grafica Tkinter
+## 18. Interface grafica PySide6
 
 Arquivos:
 
+- `src/gui/app_pyside.py`.
 - `src/gui/app_gemini.py`.
 - `src/gui/app_groq.py`.
+- `src/gui/app_azure_openai.py`.
+- `src/gui/markdown_renderer.py`, legado Tkinter nao usado pela GUI ativa.
 
 Fato: os tres providers GUI expõem uma classe chamada `ModernCityBotGUI`.
 
-Fato: desde 13/07/2026, `src/gui/app_gemini.py` concentra a base visual. `src/gui/app_groq.py` e `src/gui/app_azure_openai.py` são wrappers que injetam `CityBotGroq` e `CityBotAzureOpenAI` nessa base comum.
+Fato: desde 13/07/2026, `src/gui/app_pyside.py` concentra a base visual em PySide6. `src/gui/app_gemini.py`, `src/gui/app_groq.py` e `src/gui/app_azure_openai.py` sao wrappers que injetam, respectivamente, `CityBotGemini`, `CityBotGroq` e `CityBotAzureOpenAI`.
+
+Fato: os wrappers de provider resolvem a raiz do projeto e adicionam esse caminho ao `sys.path` antes dos imports `src.*`. Isso permite executar diretamente arquivos como `src/gui/app_azure_openai.py` por caminho absoluto, alem de executar pelo `main.py`.
 
 Fato: a GUI usa:
 
-- Tema escuro configurado por `ttk.Style`.
+- Tema escuro via Qt stylesheet.
 - Sidebar com fontes de dados.
 - Area de chat com bolhas.
-- Entrada de texto.
+- Entrada de texto com `QTextEdit`.
 - Barra de status.
 - Logo carregado de `src/figures/citybot_logo.png`.
 - Threads para chamadas demoradas.
 
-Fato: em 13/07/2026, a interface foi modernizada com `ttk.Frame`, `ttk.Label`, `ttk.Button`, `ttk.Entry`, `ttk.Scrollbar` e estilos nomeados para sidebar, botões, status, diálogo, cartões e bolhas. `tk.Canvas`, `tk.Text` e `tk.Toplevel` continuam sendo usados onde são mais adequados para rolagem, edição/renderização de texto e janelas auxiliares.
+Fato: em 13/07/2026, a interface ativa foi migrada de Tkinter/ttk para PySide6. A implementacao usa `QMainWindow`, `QFrame`, `QPushButton`, `QLabel`, `QTextEdit`, `QTextBrowser`, `QScrollArea`, `QFileDialog`, `QInputDialog` e `QMessageBox`.
 
-Fato: em 03/06/2026, foi criado `src/gui/markdown_renderer.py` para renderizar Markdown basico dentro da GUI usando apenas Tkinter.
+Fato: as bolhas de mensagem usam `QTextBrowser.setMarkdown()` para renderizar Markdown basico e abrir links externos.
 
-Fato: as bolhas de mensagem deixaram de usar `tk.Label` para o corpo da mensagem e passaram a usar `tk.Text` readonly com tags de formatacao.
+Fato: em 13/07/2026, as bolhas de resposta passaram a calcular largura pela area disponivel do chat e altura pelo tamanho total do conteudo, sem rolagem interna. Respostas longas ficam mais largas e aparecem completas dentro da bolha, usando a rolagem geral da conversa quando necessario.
 
-Fato: em 08/06/2026, uma tentativa de redimensionar automaticamente a altura da bolha Markdown apos renderizacao foi removida, porque causava bolhas visualmente grandes demais para mensagens curtas. A causa principal das respostas Azure cortadas era o limite baixo de `AZURE_MAX_OUTPUT_TOKENS`.
+Fato: em 13/07/2026, os dialogos Qt passaram a receber estilos explicitos de fundo, texto, campos e botoes para evitar texto invisivel em caixas como a confirmacao de limpar conversa.
 
-Fato: o renderizador Markdown suporta:
-
-- Titulos `#`, `##` e `###`.
-- Negrito com `**texto**`.
-- Italico com `*texto*`.
-- Negrito e italico com `***texto***`.
-- Codigo inline com crases.
-- Blocos de codigo com cercas de crases triplas.
-- Listas simples e numeradas.
-- Tabelas Markdown simples no formato GitHub, com cabecalho, separador e linhas iniciadas e encerradas por `|`.
-- Citacoes iniciadas com `>`.
-- Regras horizontais com `---`, `***` ou `___`.
-- Links no formato `[texto](url)`, com clique abrindo o navegador padrao.
-
-Fato: nao foi adicionada dependencia nova para Markdown. A decisao foi manter Tkinter e implementar um renderer pequeno, porque isso preserva simplicidade, reduz custo de instalacao e evita JS.
-
-Fato: em 08/06/2026, `src/gui/markdown_renderer.py` passou a detectar blocos de tabela compostos por linha de cabecalho, linha separadora `|---|---|` e linhas de dados. A renderizacao remove os pipes crus, ignora a linha separadora original e exibe a tabela alinhada em fonte monoespacada.
-
-Opiniao tecnica: a implementacao de tabela e propositalmente simples. Ela cobre bem tabelas comuns geradas por LLMs, mas nao tenta implementar todo o CommonMark, como pipes escapados dentro de celulas, alinhamento por coluna ou tabelas com conteudo multiline.
-
-Fato: a base visual em `app_gemini.py` resolve o logo com base em `root_path`, usando `Path(root_path) / 'src' / 'figures' / 'citybot_logo.png`. Como Groq e Azure reutilizam essa base, os tres providers usam o mesmo carregamento de logo.
-
-Fato: em 03/06/2026, `src/gui/app_azure_openai.py` foi ajustado para adicionar a raiz do projeto ao `sys.path` antes dos imports `src.*`. Isso permite executar diretamente:
-
-```powershell
-& C:/Users/felip/OneDrive/git_work/citybot/venv/Scripts/python.exe c:/Users/felip/OneDrive/git_work/citybot/src/gui/app_azure_openai.py
-```
-
-sem `ModuleNotFoundError: No module named 'src'`.
+Fato: `src/gui/markdown_renderer.py` permanece no projeto como legado da interface Tkinter anterior. Ele nao e importado pela GUI PySide6 ativa.
 
 Fato: em 03/06/2026, `conversation_history` na GUI foi corrigido para armazenar tuplas com papel da mensagem:
 
@@ -801,15 +801,15 @@ Fato: em 03/06/2026, `conversation_history` na GUI foi corrigido para armazenar 
 ("assistant", response)
 ```
 
-Impacto pratico: respostas em Markdown agora ficam mais legiveis na interface, especialmente listas, blocos de codigo, titulos e trechos em negrito. A correcao do historico tambem melhora a qualidade das respostas, porque o modelo deixa de receber respostas antigas como se fossem novas mensagens do usuario.
+Impacto pratico: a GUI passou a usar uma biblioteca desktop mais robusta que Tkinter, com melhor base para layout, estilo, dialogos e evolucao visual.
 
-Trade-offs da solucao com Tkinter:
+Trade-offs da solucao com PySide6:
 
-- Complexidade: baixa a media, porque o renderer e local e pequeno.
-- Custo de implementacao: baixo, sem dependencia externa.
-- Manutencao: melhor do que duplicar regex nas duas GUIs, pois o parser fica centralizado.
-- Escalabilidade visual: suficiente para Markdown basico, mas nao substitui um renderer HTML completo.
-- Performance: boa para mensagens comuns; respostas extremamente longas ainda podem deixar a bolha grande.
+- Complexidade: media, porque Qt tem mais conceitos do que Tkinter.
+- Custo de instalacao: maior, pois `PySide6` e uma dependencia grande.
+- Manutencao: melhor, pois a GUI ativa e unica e os providers sao wrappers pequenos.
+- Escalabilidade visual: melhor para evoluir a interface desktop.
+- Performance: boa para mensagens comuns; respostas extremamente longas ainda podem gerar bolhas altas.
 
 Fato: opcoes de fonte na sidebar:
 
@@ -822,15 +822,15 @@ Fato: opcoes de fonte na sidebar:
 
 Fato: a GUI usa `threading.Thread(..., daemon=True)` para processar mensagens e carregamentos externos.
 
-Fato: atualizacoes de interface vindas de threads usam em varios pontos `self.root.after(0, ...)`, que e o caminho correto em Tkinter.
+Fato: atualizacoes de interface vindas de threads sao encaminhadas por sinais Qt (`WorkerSignals.finished` e `WorkerSignals.failed`), evitando atualizacao direta da UI pela thread de trabalho.
 
 Risco real:
 
-- O Markdown implementado cobre os casos comuns, incluindo tabelas simples, mas ainda nao oferece imagens embutidas, notas de rodape, celulas multiline ou parser CommonMark completo.
+- O Markdown agora depende do suporte de Markdown do Qt em `QTextBrowser`, que cobre casos comuns, mas nao substitui um renderer completo de HTML/CommonMark.
 
 Risco residual:
 
-- A base visual agora e compartilhada entre os tres providers; isso reduz duplicacao, mas faz qualquer regressao em `app_gemini.py` afetar Gemini, Groq e Azure ao mesmo tempo.
+- A base visual agora e compartilhada entre os tres providers; isso reduz duplicacao, mas faz qualquer regressao em `app_pyside.py` afetar Gemini, Groq e Azure ao mesmo tempo.
 
 Fato: apos confirmacao do usuario, `clear_chat()` apaga somente as conversas persistidas, limpa a tela, o historico em memoria e o contexto carregado. Perfis de usuario sao preservados. A limpeza e bloqueada enquanto uma resposta esta em processamento.
 
@@ -910,12 +910,12 @@ Riscos:
 Fato:
 
 ```text
-URL -> extracao de video_id -> YouTubeTranscriptApi -> transcricao -> contexto do bot -> resposta LLM
+URL -> extracao de video_id -> YouTubeTranscriptApi -> fallback yt-dlp para legendas -> transcricao -> contexto do bot -> resposta LLM
 ```
 
 Riscos:
 
-- Sem transcricao disponivel, nao ha conteudo.
+- Sem transcricao ou legenda disponivel, nao ha conteudo.
 - URL fora dos formatos esperados pode falhar.
 - Transcricao automatica pode conter erros.
 
@@ -966,7 +966,7 @@ Riscos:
 Fato: em 27/06/2026, o `README.md` foi atualizado para refletir que o codigo ativo em `src/utils` usa:
 
 - `requests` e `BeautifulSoup` para site.
-- `youtube-transcript-api` para YouTube.
+- `youtube-transcript-api` e `yt-dlp` para YouTube.
 - `pypdf.PdfReader` para PDF.
 
 Fato: referencias antigas a `WebBaseLoader`, `YoutubeLoader` e `PyPDFLoader` foram removidas da documentacao principal.
@@ -986,7 +986,6 @@ Pontos positivos verificados:
 
 Pontos de atencao:
 
-- Duplicacao forte entre GUIs.
 - Cobertura automatizada ainda concentrada em banco e utilitarios.
 - Alguns providers e o OCR ainda tratam erros com `print` ou mensagens genericas.
 - Logging ainda nao possui configuracao central.
@@ -1006,10 +1005,15 @@ Fato: os testes cobrem:
 
 - persistencia e limpeza do banco;
 - continuidade de gravacao depois da limpeza;
-- restauracao e limpeza do historico nas GUIs Gemini e Groq;
+- restauracao e limpeza do historico nas GUIs Gemini, Groq e Azure;
 - timeout e remocao de scripts no scraping;
 - parser de URLs do YouTube;
 - uso da API de transcricao compativel com a dependencia;
+- fallback via `yt-dlp` para legendas do YouTube quando a transcricao direta falha;
+- mensagem contextual de bloqueio `HTTP 429 Too Many Requests` no fluxo de video;
+- configuracao opcional de cookies do navegador para `yt-dlp`;
+- configuracao opcional por arquivo `cookies.txt` e mensagem contextual para banco de cookies bloqueado;
+- mensagem contextual para arquivo de cookies fora do formato Netscape;
 - paginas PDF sem texto;
 - contencao de arquivos OCR dentro de `PROJECT_ROOT/textos/`;
 - caminho padrao do banco na raiz do projeto;
@@ -1017,13 +1021,13 @@ Fato: os testes cobrem:
 
 Fato: em 27/06/2026, os 10 testes passaram e 16 arquivos Python de producao e teste passaram na validacao de AST.
 
-Fato: em 13/07/2026, os 13 testes passaram com:
+Fato: em 13/07/2026, os 20 testes passaram com:
 
 ```powershell
 venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Fato: em 13/07/2026, apos a modernizacao com `ttk`, a GUI base foi instanciada com `root.withdraw()` e bot falso para validar construcao de estilos, widgets e layout sem chamar APIs externas.
+Fato: em 13/07/2026, apos a migracao para PySide6, as GUIs Gemini, Groq e Azure foram instanciadas com `QApplication` e fechadas sem chamar APIs externas para validar construcao de janela, estilos, widgets e layout.
 
 Limitacao: ainda faltam testes de chamadas reais ou mockadas do caminho feliz dos providers, OCR e fluxos completos da GUI.
 
@@ -1118,6 +1122,7 @@ Concluido em 13/07/2026:
 - Arquivos OCR padronizados em `PROJECT_ROOT/textos`, sem depender do diretorio atual.
 - Gemini valida `GEMINI_API_KEY` e `GEMINI_MODEL` antes de criar cliente.
 - Groq valida `GROQ_API_KEY` e `GROQ_API_MODEL` antes de chamar o modelo.
+- GUI ativa migrada para PySide6 com base visual unica em `src/gui/app_pyside.py`.
 
 Pendente:
 
@@ -1147,17 +1152,12 @@ Pendente:
 
 ### Prioridade 2 - Melhorar manutencao
 
-1. Unificar GUI Gemini e Groq.
-   - Motivo: reduzir duplicacao.
-   - Impacto: menos bugs duplicados e mais velocidade de evolucao.
-   - Complexidade: media.
-
-2. Criar interface comum para providers.
+1. Criar interface comum para providers.
    - Motivo: desacoplar GUI do provider.
    - Impacto: facilita adicionar novos modelos.
    - Complexidade: media.
 
-3. Substituir `print` por `logging`.
+2. Substituir `print` por `logging`.
    - Motivo: melhorar debug sem poluir interface.
    - Impacto: suporte mais rapido.
    - Complexidade: baixa a media.
@@ -1181,14 +1181,13 @@ Pendente:
 
 ## 28. Melhor opcao arquitetural para proxima refatoracao
 
-Opiniao tecnica: a melhor proxima refatoracao e criar uma camada comum de provider e uma GUI unica.
+Opiniao tecnica: como a GUI ativa ja foi unificada em `app_pyside.py`, a melhor proxima refatoracao e criar uma camada comum de provider/servico.
 
 Por que essa opcao e superior:
 
-- Ataca a duplicacao mais visivel do projeto.
-- Reduz risco de uma interface evoluir diferente da outra.
+- Reduz diferencas de contrato entre Gemini, Groq e Azure.
 - Facilita adicionar novos providers no futuro.
-- Mantem a mudanca concentrada na arquitetura, sem trocar a experiencia do usuario.
+- Mantem a mudanca concentrada no core, sem trocar a experiencia do usuario.
 
 Formato sugerido:
 
@@ -1199,10 +1198,11 @@ src/
 │   ├── providers/
 │   │   ├── base.py
 │   │   ├── gemini.py
-│   │   └── groq.py
+│   │   ├── groq.py
+│   │   └── azure_openai.py
 │   └── citybot_service.py
 ├── gui/
-│   └── app.py
+│   └── app_pyside.py
 └── utils/
 ```
 
@@ -1289,7 +1289,7 @@ Estas informacoes nao foram confirmadas nesta analise:
 
 - Quais valores reais estao no `.env`, porque nao foram lidos para proteger chaves.
 - Se as chaves de API estao validas.
-- Se a GUI abre corretamente no ambiente atual.
+- Se todos os fluxos manuais da GUI funcionam com APIs reais. A abertura das GUIs Gemini, Groq e Azure em PySide6 foi validada localmente sem chamada externa.
 - Se as APIs externas estao funcionando no momento.
 - Qual e o objetivo final do projeto, uso pessoal, portfolio, produto interno ou SaaS.
 
@@ -1318,7 +1318,7 @@ Fato: neste caso especifico, `codex.md` foi criado do zero, entao nao havia vers
 Validacao minima recomendada apos mudancas em codigo:
 
 ```powershell
-venv\Scripts\python.exe -m py_compile main.py src\core\database.py src\core\bot_groq.py src\core\bot_gemini.py src\core\bot_azure_openai.py src\utils\paths.py src\utils\scrapers.py src\utils\pdf_reader.py src\utils\ocr.py src\utils\file_writer.py src\gui\app_groq.py src\gui\app_gemini.py src\gui\app_azure_openai.py src\gui\markdown_renderer.py
+venv\Scripts\python.exe -m py_compile main.py src\core\database.py src\core\bot_groq.py src\core\bot_gemini.py src\core\bot_azure_openai.py src\utils\paths.py src\utils\scrapers.py src\utils\pdf_reader.py src\utils\ocr.py src\utils\file_writer.py src\gui\app_pyside.py src\gui\app_groq.py src\gui\app_gemini.py src\gui\app_azure_openai.py src\gui\markdown_renderer.py
 ```
 
 Validacao adicional recomendada quando houver testes:
@@ -1416,13 +1416,13 @@ python main.py --provider azure_openai --mode cli
 Validar sintaxe:
 
 ```powershell
-python -c "import ast, pathlib; files=[pathlib.Path('main.py'), *pathlib.Path('src').rglob('*.py'), *pathlib.Path('tests').rglob('*.py')]; [ast.parse(path.read_text(encoding='utf-8')) for path in files]"
+venv\Scripts\python.exe -m py_compile main.py src\core\database.py src\core\bot_groq.py src\core\bot_gemini.py src\core\bot_azure_openai.py src\utils\paths.py src\utils\scrapers.py src\utils\pdf_reader.py src\utils\ocr.py src\utils\file_writer.py src\gui\app_pyside.py src\gui\app_groq.py src\gui\app_gemini.py src\gui\app_azure_openai.py src\gui\markdown_renderer.py
 ```
 
 Executar testes:
 
 ```powershell
-python -m unittest discover -s tests -v
+venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
 Ver status do Git:
@@ -1441,7 +1441,7 @@ Opiniao tecnica: o projeto merece uma rodada de hardening antes de crescer. A me
 
 1. Validar configuracao dos providers antes de criar os clientes.
 2. Expandir testes para providers, OCR e GUI.
-3. Unificar GUI e providers com uma interface comum.
+3. Criar contrato comum de providers.
 4. Implementar controle de contexto para documentos grandes.
 5. Melhorar privacidade e observabilidade.
 

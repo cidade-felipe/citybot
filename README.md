@@ -8,7 +8,7 @@ Ele permite conversar em linguagem natural sobre o conteúdo de arquivos e links
 ![Status](https://img.shields.io/badge/status-em%20desenvolvimento-yellow)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/python-3.x-blue)
-![Interface](https://img.shields.io/badge/interface-CLI%20%7C%20Tkinter-lightblue)
+![Interface](https://img.shields.io/badge/interface-CLI%20%7C%20PySide6-lightblue)
 
 </div>
 
@@ -24,7 +24,7 @@ O CityBot foi pensado como um assistente pessoal para estudo e trabalho, capaz d
 - Transcrever e analisar vídeos do YouTube
 - Ler texto em imagens usando OCR e salvar o resultado
 - Manter histórico de conversas em um banco SQLite
-- Oferecer interação tanto por linha de comando quanto por interface gráfica desenvolvida em Tkinter
+- Oferecer interação tanto por linha de comando quanto por interface gráfica desenvolvida em PySide6
 
 Ele suporta opções de inteligência artificial através das APIs da Groq, Google Gemini ou Azure OpenAI, integrando várias fontes de informação num fluxo único de conversa.
 
@@ -34,13 +34,13 @@ Ele suporta opções de inteligência artificial através das APIs da Groq, Goog
 
 - Chat em linguagem natural com modelos LLM via Groq, Gemini ou Azure OpenAI
 - Leitura de conteúdo de sites com `requests` e `BeautifulSoup`
-- Transcrição de vídeos do YouTube com `youtube-transcript-api`
+- Transcrição de vídeos do YouTube com `youtube-transcript-api` e fallback de legendas via `yt-dlp`
 - Leitura de PDFs com `pypdf`
 - OCR de imagens com OpenCV + Tesseract + langdetect
 - Salvamento de texto de imagens em `.docx` e `.txt`
 - Histórico de conversas e usuários em SQLite
 - Interface de linha de comando com menu interativo
-- Interface gráfica com Tkinter, área de chat e botões para PDF, site e imagem
+- Interface gráfica com PySide6, área de chat e botões para PDF, site e imagem
 
 ---
 
@@ -63,11 +63,12 @@ citybot/
 │   │   ├── bot_gemini.py   # Implementação Gemini
 │   │   └── bot_azure_openai.py # Implementação Azure OpenAI
 │   │
-│   ├── gui/                # Interfaces gráficas (Tkinter)
+│   ├── gui/                # Interface gráfica PySide6
+│   │   ├── app_pyside.py   # Base visual reutilizada pelos providers
 │   │   ├── app_groq.py
 │   │   ├── app_gemini.py
 │   │   ├── app_azure_openai.py
-│   │   └── markdown_renderer.py
+│   │   └── markdown_renderer.py # Renderer legado Tkinter
 │   │
 │   └── utils/              # Funções utilitárias (OCR, Scrapers, PDF)
 │       ├── scrapers.py
@@ -83,7 +84,7 @@ citybot/
 A refatoração dividiu as responsabilidades em níveis:
 
 1. **Core (`src/core`)**: Contém a inteligência e o banco de dados. As classes `CityBotGroq`, `CityBotGemini` e `CityBotAzureOpenAI` gerenciam o fluxo de mensagens e persistência.
-2. **GUI (`src/gui`)**: Responsável exclusiva pela apresentação visual e eventos do Tkinter.
+2. **GUI (`src/gui`)**: Responsável exclusiva pela apresentação visual e eventos da interface PySide6.
 3. **Utils (`src/utils`)**: Contém funções puras para extração de dados (OCR, Web, YouTube, PDF), facilitando a reutilização e testes.
 
 ---
@@ -95,7 +96,7 @@ A refatoração dividiu as responsabilidades em níveis:
 - Groq API, Google Gemini API e Azure OpenAI para modelos de linguagem
 - OpenAI Python SDK (`AzureOpenAI`) para integração com Azure OpenAI
 - SQLite (via `sqlite3`)
-- Tkinter (interface gráfica)
+- PySide6 (interface gráfica)
 - OpenCV (`cv2`)
 - Tesseract OCR (`pytesseract`)
 - `langdetect` para detectar idioma do texto
@@ -120,6 +121,7 @@ openai
 requests
 beautifulsoup4
 youtube-transcript-api
+yt-dlp
 truststore
 pytesseract
 opencv-python
@@ -128,6 +130,7 @@ langdetect
 pyperclip
 pillow
 pypdf
+PySide6
 ```
 
 Requisitos externos:
@@ -157,9 +160,16 @@ AZURE_ENDPOINT=https://seu-recurso.openai.azure.com/
 AZURE_API_VERSION=versao_da_api
 AZURE_DEPLOYMENT=nome_do_deployment
 AZURE_MAX_OUTPUT_TOKENS=1200
+
+# Opcional: ajuda o yt-dlp quando o YouTube bloqueia transcrições anônimas
+CITYBOT_YOUTUBE_COOKIES_BROWSER=chrome
+CITYBOT_YOUTUBE_COOKIES_PROFILE=Default
+CITYBOT_YOUTUBE_COOKIES_FILE=C:\caminho\para\youtube_cookies.txt
 ```
 
 Se as respostas do Azure OpenAI ficarem cortadas, aumente `AZURE_MAX_OUTPUT_TOKENS`. O valor `300` é baixo para resumos longos, análises e respostas com listas.
+
+Para vídeos do YouTube, as variáveis de cookies são opcionais. Use apenas se aparecer erro `HTTP 429 Too Many Requests` ou bloqueio de transcrição. Valores comuns de `CITYBOT_YOUTUBE_COOKIES_BROWSER`: `chrome`, `edge` ou `firefox`. Se o Chrome/Edge estiver bloqueando o banco de cookies, feche o navegador completamente ou prefira `CITYBOT_YOUTUBE_COOKIES_FILE` com um arquivo `cookies.txt` no formato Netscape. Arquivos JSON, HTML, SQLite ou texto copiado manualmente não são aceitos pelo `yt-dlp`.
 
 Exemplos de modelos da Groq que podem ser usados:
 

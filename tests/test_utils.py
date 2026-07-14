@@ -7,8 +7,14 @@ from unittest.mock import Mock, patch
 from src.utils.file_writer import salvar_texto
 from src.utils.pdf_reader import carrega_pdf
 from src.utils.scrapers import (
+    ExtractedContent,
     REQUEST_TIMEOUT_SECONDS,
+    VIDEO_LANGUAGES,
+    YOUTUBE_COOKIES_BROWSER_ENV,
+    YOUTUBE_COOKIES_FILE_ENV,
+    YOUTUBE_COOKIES_PROFILE_ENV,
     _extrai_video_id,
+    _yt_dlp_options,
     carrega_site,
     carrega_video,
 )
@@ -55,8 +61,120 @@ class ScrapersTest(unittest.TestCase):
         self.assertEqual(texto, 'Primeira parte segunda parte')
         mock_api.return_value.fetch.assert_called_once_with(
             'abc123',
-            languages=['pt', 'en'],
+            languages=VIDEO_LANGUAGES,
         )
+
+    @patch('src.utils.scrapers.YoutubeDL')
+    @patch('src.utils.scrapers.YouTubeTranscriptApi')
+    def test_carrega_video_usa_ytdlp_como_fallback(self, mock_api, mock_youtube_dl):
+        mock_api.return_value.fetch.side_effect = RuntimeError('sem transcrição')
+
+        ydl = mock_youtube_dl.return_value.__enter__.return_value
+        ydl.extract_info.return_value = {
+            'subtitles': {
+                'en': [
+                    {
+                        'ext': 'json3',
+                        'url': 'https://captions.example/en-json3',
+                    },
+                ],
+            },
+            'automatic_captions': {
+                'pt': [
+                    {
+                        'ext': 'json3',
+                        'url': 'https://captions.example/json3',
+                    },
+                ],
+            },
+        }
+
+        response = Mock()
+        response.read.return_value = (
+            '{"events": ['
+            '{"segs": [{"utf8": "Primeira "}, {"utf8": "parte"}]},'
+            '{"segs": [{"utf8": "segunda parte"}]}'
+            ']}'
+        ).encode('utf-8')
+        ydl.urlopen.return_value = response
+
+        with self.assertLogs('src.utils.scrapers', level='WARNING'):
+            texto = carrega_video('https://youtu.be/abc123')
+
+        self.assertEqual(texto, 'Primeira parte segunda parte')
+        ydl.extract_info.assert_called_once_with('https://youtu.be/abc123', download=False)
+        ydl.urlopen.assert_called_once_with('https://captions.example/json3')
+
+    @patch('src.utils.scrapers.YoutubeDL')
+    @patch('src.utils.scrapers.YouTubeTranscriptApi')
+    def test_carrega_video_retorna_erro_contextual_em_rate_limit(self, mock_api, mock_youtube_dl):
+        mock_api.return_value.fetch.side_effect = RuntimeError('Too Many Requests')
+        ydl = mock_youtube_dl.return_value.__enter__.return_value
+        ydl.extract_info.side_effect = RuntimeError('HTTP Error 429: Too Many Requests')
+
+        with self.assertLogs('src.utils.scrapers', level='WARNING'):
+            texto = carrega_video('https://youtu.be/abc123')
+
+        self.assertIsInstance(texto, ExtractedContent)
+        self.assertEqual(texto, '')
+        self.assertIn('HTTP 429 Too Many Requests', texto.error_message)
+        self.assertIn(YOUTUBE_COOKIES_BROWSER_ENV, texto.error_message)
+
+    @patch('src.utils.scrapers.YoutubeDL')
+    @patch('src.utils.scrapers.YouTubeTranscriptApi')
+    def test_carrega_video_retorna_erro_contextual_em_banco_de_cookies_bloqueado(self, mock_api, mock_youtube_dl):
+        mock_api.return_value.fetch.side_effect = RuntimeError('Too Many Requests')
+        mock_youtube_dl.side_effect = RuntimeError('Could not copy Chrome cookie database.')
+
+        with self.assertLogs('src.utils.scrapers', level='WARNING'):
+            texto = carrega_video('https://youtu.be/abc123')
+
+        self.assertIsInstance(texto, ExtractedContent)
+        self.assertEqual(texto, '')
+        self.assertIn('não conseguiu copiar o banco de cookies', texto.error_message)
+        self.assertIn(YOUTUBE_COOKIES_FILE_ENV, texto.error_message)
+
+    @patch('src.utils.scrapers.YoutubeDL')
+    @patch('src.utils.scrapers.YouTubeTranscriptApi')
+    def test_carrega_video_retorna_erro_contextual_em_arquivo_de_cookies_invalido(self, mock_api, mock_youtube_dl):
+        mock_api.return_value.fetch.side_effect = RuntimeError('Too Many Requests')
+        mock_youtube_dl.side_effect = RuntimeError(
+            "'C:\\tmp\\youtube_cookies.txt' does not look like a Netscape format cookies file"
+        )
+
+        with self.assertLogs('src.utils.scrapers', level='WARNING'):
+            texto = carrega_video('https://youtu.be/abc123')
+
+        self.assertIsInstance(texto, ExtractedContent)
+        self.assertEqual(texto, '')
+        self.assertIn('formato Netscape cookies.txt', texto.error_message)
+        self.assertIn('arquivos JSON, HTML ou SQLite', texto.error_message)
+
+    @patch.dict(
+        os.environ,
+        {
+            YOUTUBE_COOKIES_BROWSER_ENV: 'chrome',
+            YOUTUBE_COOKIES_PROFILE_ENV: 'Default',
+            YOUTUBE_COOKIES_FILE_ENV: '',
+        },
+    )
+    def test_ytdlp_options_usa_cookies_do_navegador_quando_configurado(self):
+        options = _yt_dlp_options()
+
+        self.assertEqual(options['cookiesfrombrowser'], ('chrome', 'Default'))
+
+    @patch.dict(
+        os.environ,
+        {
+            YOUTUBE_COOKIES_BROWSER_ENV: 'chrome',
+            YOUTUBE_COOKIES_FILE_ENV: 'C:\\tmp\\youtube_cookies.txt',
+        },
+    )
+    def test_ytdlp_options_prioriza_arquivo_de_cookies(self):
+        options = _yt_dlp_options()
+
+        self.assertEqual(options['cookiefile'], 'C:\\tmp\\youtube_cookies.txt')
+        self.assertNotIn('cookiesfrombrowser', options)
 
 
 class PdfReaderTest(unittest.TestCase):

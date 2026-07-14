@@ -1,21 +1,31 @@
 import argparse
 import sys
 import os
-import tkinter as tk
 
 # Adiciona a raiz do projeto ao sys.path para garantir que o pacote src seja encontrado
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 def run_gui(provider):
-    root = tk.Tk()
+    from PySide6.QtWidgets import QApplication
+    from src.gui.app_pyside import ModernCityBotGUI
+
     if provider == 'gemini':
-        from src.gui.app_gemini import ModernCityBotGUI
+        from src.core.bot_gemini import CityBotGemini
+        bot_factory = CityBotGemini
+        title = 'CityBot Gemini - Assistente Inteligente'
     elif provider == 'azure_openai':
-        from src.gui.app_azure_openai import ModernCityBotGUI
+        from src.core.bot_azure_openai import CityBotAzureOpenAI
+        bot_factory = CityBotAzureOpenAI
+        title = 'CityBot Azure OpenAI - Assistente Inteligente'
     else:
-        from src.gui.app_groq import ModernCityBotGUI
-    ModernCityBotGUI(root)
-    root.mainloop()
+        from src.core.bot_groq import CityBotGroq
+        bot_factory = CityBotGroq
+        title = 'CityBot Groq - Assistente Inteligente'
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    window = ModernCityBotGUI(bot_factory=bot_factory, title=title)
+    window.show()
+    return app.exec()
 
 def run_cli(provider):
     if provider == 'gemini':
@@ -31,17 +41,17 @@ def run_cli(provider):
 
 def main():
     parser = argparse.ArgumentParser(description="CityBot - Assistente Inteligente Multinível")
-    parser.add_argument('--provider', type=str, choices=['groq', 'gemini', 'azure_openai'], default='gemini',
-                        help="Escolha o provedor de IA (groq, gemini ou azure_openai). Padrão: gemini")
+    parser.add_argument('--provider', type=str, choices=['groq', 'gemini', 'azure_openai'], default='azure_openai',
+                        help="Escolha o provedor de IA (groq, gemini ou azure_openai). Padrão: azure_openai")
     parser.add_argument('--mode', type=str, choices=['gui', 'cli'], default='gui',
                         help="Escolha o modo de execução (gui ou cli). Padrão: gui")
-    
+
     args = parser.parse_args()
 
     if args.mode == 'gui':
-        run_gui(args.provider)
-    else:
-        run_cli(args.provider)
+        return run_gui(args.provider)
+    run_cli(args.provider)
+    return 0
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
