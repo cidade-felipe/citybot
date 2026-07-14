@@ -15,6 +15,7 @@ requests==2.32.3
 truststore==0.10.4
 youtube-transcript-api==1.2.4
 yt-dlp==2026.7.4
+faster-whisper==1.2.1
 
 # OCR
 langdetect==1.0.9

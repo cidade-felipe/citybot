@@ -234,6 +234,11 @@ AZURE_MAX_OUTPUT_TOKENS
 CITYBOT_YOUTUBE_COOKIES_BROWSER
 CITYBOT_YOUTUBE_COOKIES_PROFILE
 CITYBOT_YOUTUBE_COOKIES_FILE
+CITYBOT_WHISPER_MODEL
+CITYBOT_WHISPER_DEVICE
+CITYBOT_WHISPER_COMPUTE_TYPE
+CITYBOT_WHISPER_LANGUAGE
+CITYBOT_WHISPER_MAX_AUDIO_SECONDS
 ```
 
 Fato: `CityBotGemini` le explicitamente `GEMINI_API_KEY` e `GEMINI_MODEL`.
@@ -245,6 +250,8 @@ Fato: `CityBotAzureOpenAI` le explicitamente `AZURE_OPENAI_API_KEY`, `AZURE_ENDP
 Fato: `CITYBOT_YOUTUBE_COOKIES_BROWSER`, `CITYBOT_YOUTUBE_COOKIES_PROFILE` e `CITYBOT_YOUTUBE_COOKIES_FILE` sao opcionais. Quando definidos, o fallback de video via `yt-dlp` tenta usar cookies para reduzir bloqueios do YouTube em transcricoes anonimas.
 
 Fato: `CITYBOT_YOUTUBE_COOKIES_FILE` tem prioridade sobre `CITYBOT_YOUTUBE_COOKIES_BROWSER`, porque evita acessar diretamente o banco de cookies vivo do Chrome/Edge.
+
+Fato: `CITYBOT_WHISPER_MODEL`, `CITYBOT_WHISPER_DEVICE`, `CITYBOT_WHISPER_COMPUTE_TYPE`, `CITYBOT_WHISPER_LANGUAGE` e `CITYBOT_WHISPER_MAX_AUDIO_SECONDS` sao opcionais e controlam o fallback local de transcricao de audio com `faster-whisper`.
 
 Fato: em 13/07/2026, Gemini e Groq passaram a validar variaveis obrigatorias no construtor, guardar `config_error` e retornar erro claro em `resposta_bot` quando a configuracao esta incompleta.
 
@@ -268,6 +275,7 @@ Dependencias principais:
 - `beautifulsoup4`: parse HTML.
 - `youtube-transcript-api`: transcricao do YouTube.
 - `yt-dlp`: fallback para metadados e URLs de legendas do YouTube.
+- `faster-whisper`: fallback local para transcricao de audio quando transcricao e legendas do YouTube falham.
 - `truststore`: validacao HTTPS usando certificados confiaveis do sistema operacional.
 - `pypdf`: leitura de PDF.
 - `opencv-python`: pre-processamento de imagem para OCR Tesseract.
@@ -281,6 +289,8 @@ Dependencias principais:
 Fato: `PySide6==6.11.1` foi adicionado ao `requirements.txt` em 13/07/2026. `tkinter` permanece apenas em `src/gui/markdown_renderer.py`, arquivo legado que nao e mais usado pela GUI ativa.
 
 Fato: `yt-dlp==2026.7.4` foi adicionado ao `requirements.txt` em 13/07/2026 como fallback para extracao de legendas do YouTube.
+
+Fato: `faster-whisper==1.2.1` foi adicionado ao `requirements.txt` em 13/07/2026 como fallback local de transcricao de audio para videos do YouTube.
 
 Fato: o Tesseract OCR e dependencia externa do sistema, nao apenas pacote Python.
 
@@ -618,7 +628,9 @@ Fato: `carrega_video(url_video)`:
 - Tenta primeiro `YouTubeTranscriptApi().fetch(video_id, languages=['pt', 'pt-BR', 'en'])`, compativel com a versao `1.2.4` fixada.
 - Se a transcricao direta falhar ou vier vazia, usa `yt-dlp` para buscar metadados do video e selecionar legendas oficiais ou automaticas.
 - O fallback via `yt-dlp` prioriza legendas em portugues e ingles, baixa somente o arquivo de legenda pela propria camada de rede do `yt-dlp` e extrai texto de formatos como `json3`, `vtt`, `srv3` e `ttml`.
-- Quando o YouTube retorna `HTTP 429 Too Many Requests`, a GUI exibe uma mensagem especifica sugerindo configurar `CITYBOT_YOUTUBE_COOKIES_BROWSER`.
+- Se transcricao e legendas falharem, baixa temporariamente apenas o audio com `yt-dlp` e transcreve localmente com `faster-whisper`.
+- O fallback de audio usa `CITYBOT_WHISPER_MODEL=base`, `CITYBOT_WHISPER_DEVICE=cpu`, `CITYBOT_WHISPER_COMPUTE_TYPE=int8` e limite de 3600 segundos por padrao.
+- Quando o YouTube retorna `HTTP 429 Too Many Requests`, a GUI exibe uma mensagem especifica sugerindo configurar `CITYBOT_YOUTUBE_COOKIES_BROWSER`; se o fallback local tambem nao conseguir baixar o audio, a mensagem informa essa falha adicional.
 - Quando o `yt-dlp` nao consegue copiar o banco de cookies do Chrome/Edge, a GUI exibe uma mensagem especifica sugerindo fechar o navegador ou usar `CITYBOT_YOUTUBE_COOKIES_FILE`.
 - Quando `CITYBOT_YOUTUBE_COOKIES_FILE` aponta para arquivo fora do formato Netscape cookies.txt, a GUI exibe uma mensagem especifica explicando que JSON, HTML ou SQLite nao funcionam.
 - Usa `truststore` para validar HTTPS com o repositorio de certificados do sistema operacional.
@@ -639,6 +651,8 @@ Risco real em YouTube:
 - Usar cookies do navegador melhora alguns casos de bloqueio, mas depende do estado local do navegador e pode falhar se o perfil estiver bloqueado, deslogado ou indisponivel.
 - Em Windows, Chrome/Edge podem bloquear o arquivo `Network/Cookies` enquanto estao abertos. Nesses casos, fechar totalmente o navegador ou usar um arquivo `cookies.txt` exportado e mais robusto.
 - Arquivos de cookies exportados sao sensiveis e ficam ignorados pelo Git por padroes como `cookies.txt`, `youtube_cookies.txt`, `*_cookies.txt` e `*.cookies.txt`.
+- O primeiro uso de `faster-whisper` pode baixar o modelo pelo Hugging Face Hub e demorar. Sem internet ou cache local de modelo, esse fallback pode falhar.
+- Transcricao local de audio e mais lenta e consome mais CPU/RAM do que usar legenda pronta.
 
 Opiniao tecnica: para uso pessoal, a abordagem e simples e adequada. Para ambiente real, validacao de URL, limites de tamanho e protecao contra enderecos internos ainda trariam ganho de seguranca.
 
@@ -910,7 +924,7 @@ Riscos:
 Fato:
 
 ```text
-URL -> extracao de video_id -> YouTubeTranscriptApi -> fallback yt-dlp para legendas -> transcricao -> contexto do bot -> resposta LLM
+URL -> extracao de video_id -> YouTubeTranscriptApi -> fallback yt-dlp para legendas -> fallback yt-dlp audio + faster-whisper -> transcricao -> contexto do bot -> resposta LLM
 ```
 
 Riscos:
@@ -966,7 +980,7 @@ Riscos:
 Fato: em 27/06/2026, o `README.md` foi atualizado para refletir que o codigo ativo em `src/utils` usa:
 
 - `requests` e `BeautifulSoup` para site.
-- `youtube-transcript-api` e `yt-dlp` para YouTube.
+- `youtube-transcript-api`, `yt-dlp` e `faster-whisper` para YouTube.
 - `pypdf.PdfReader` para PDF.
 
 Fato: referencias antigas a `WebBaseLoader`, `YoutubeLoader` e `PyPDFLoader` foram removidas da documentacao principal.
@@ -1010,6 +1024,8 @@ Fato: os testes cobrem:
 - parser de URLs do YouTube;
 - uso da API de transcricao compativel com a dependencia;
 - fallback via `yt-dlp` para legendas do YouTube quando a transcricao direta falha;
+- fallback via `faster-whisper` para transcricao local de audio quando transcricao e legendas falham;
+- limite de duracao para transcricao local de audio;
 - mensagem contextual de bloqueio `HTTP 429 Too Many Requests` no fluxo de video;
 - configuracao opcional de cookies do navegador para `yt-dlp`;
 - configuracao opcional por arquivo `cookies.txt` e mensagem contextual para banco de cookies bloqueado;
@@ -1021,7 +1037,7 @@ Fato: os testes cobrem:
 
 Fato: em 27/06/2026, os 10 testes passaram e 16 arquivos Python de producao e teste passaram na validacao de AST.
 
-Fato: em 13/07/2026, os 20 testes passaram com:
+Fato: em 13/07/2026, os 22 testes passaram com:
 
 ```powershell
 venv\Scripts\python.exe -m unittest discover -s tests -v

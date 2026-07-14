@@ -34,7 +34,7 @@ Ele suporta opções de inteligência artificial através das APIs da Groq, Goog
 
 - Chat em linguagem natural com modelos LLM via Groq, Gemini ou Azure OpenAI
 - Leitura de conteúdo de sites com `requests` e `BeautifulSoup`
-- Transcrição de vídeos do YouTube com `youtube-transcript-api` e fallback de legendas via `yt-dlp`
+- Transcrição de vídeos do YouTube com `youtube-transcript-api`, legendas via `yt-dlp` e fallback local com `faster-whisper`
 - Leitura de PDFs com `pypdf`
 - OCR de imagens com OpenCV + Tesseract + langdetect
 - Salvamento de texto de imagens em `.docx` e `.txt`
@@ -105,6 +105,7 @@ A refatoração dividiu as responsabilidades em níveis:
 - `python-dotenv` para carregamento de variáveis de ambiente
 - `truststore` para usar os certificados confiáveis do sistema operacional
 - `Pillow` (PIL) para tratar imagem do logo na interface
+- `faster-whisper` para transcrição local de áudio quando legendas do YouTube falham
 
 ---
 
@@ -122,6 +123,7 @@ requests
 beautifulsoup4
 youtube-transcript-api
 yt-dlp
+faster-whisper
 truststore
 pytesseract
 opencv-python
@@ -165,11 +167,20 @@ AZURE_MAX_OUTPUT_TOKENS=1200
 CITYBOT_YOUTUBE_COOKIES_BROWSER=chrome
 CITYBOT_YOUTUBE_COOKIES_PROFILE=Default
 CITYBOT_YOUTUBE_COOKIES_FILE=C:\caminho\para\youtube_cookies.txt
+
+# Opcional: fallback local de transcrição de áudio
+CITYBOT_WHISPER_MODEL=base
+CITYBOT_WHISPER_DEVICE=cpu
+CITYBOT_WHISPER_COMPUTE_TYPE=int8
+CITYBOT_WHISPER_LANGUAGE=pt
+CITYBOT_WHISPER_MAX_AUDIO_SECONDS=3600
 ```
 
 Se as respostas do Azure OpenAI ficarem cortadas, aumente `AZURE_MAX_OUTPUT_TOKENS`. O valor `300` é baixo para resumos longos, análises e respostas com listas.
 
 Para vídeos do YouTube, as variáveis de cookies são opcionais. Use apenas se aparecer erro `HTTP 429 Too Many Requests` ou bloqueio de transcrição. Valores comuns de `CITYBOT_YOUTUBE_COOKIES_BROWSER`: `chrome`, `edge` ou `firefox`. Se o Chrome/Edge estiver bloqueando o banco de cookies, feche o navegador completamente ou prefira `CITYBOT_YOUTUBE_COOKIES_FILE` com um arquivo `cookies.txt` no formato Netscape. Arquivos JSON, HTML, SQLite ou texto copiado manualmente não são aceitos pelo `yt-dlp`.
+
+Se transcrição e legendas do YouTube falharem, o CityBot baixa temporariamente apenas o áudio e tenta transcrever localmente com `faster-whisper`. O primeiro uso pode demorar porque o modelo é baixado automaticamente. `CITYBOT_WHISPER_MODEL` usa `base` por padrão; modelos maiores tendem a ser melhores, mas mais lentos. `CITYBOT_WHISPER_LANGUAGE` pode ficar vazio para detecção automática.
 
 Exemplos de modelos da Groq que podem ser usados:
 

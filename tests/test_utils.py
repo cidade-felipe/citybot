@@ -1,8 +1,13 @@
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
+
+root_path = Path(__file__).resolve().parents[1]
+if str(root_path) not in sys.path:
+    sys.path.append(str(root_path))
 
 from src.utils.file_writer import salvar_texto
 from src.utils.pdf_reader import carrega_pdf
@@ -10,11 +15,13 @@ from src.utils.scrapers import (
     ExtractedContent,
     REQUEST_TIMEOUT_SECONDS,
     VIDEO_LANGUAGES,
+    YOUTUBE_AUDIO_DOWNLOAD_HINT,
     YOUTUBE_COOKIES_BROWSER_ENV,
     YOUTUBE_COOKIES_FILE_ENV,
     YOUTUBE_COOKIES_PROFILE_ENV,
     _extrai_video_id,
     _yt_dlp_options,
+    _valida_duracao_audio,
     carrega_site,
     carrega_video,
 )
@@ -105,6 +112,41 @@ class ScrapersTest(unittest.TestCase):
         ydl.extract_info.assert_called_once_with('https://youtu.be/abc123', download=False)
         ydl.urlopen.assert_called_once_with('https://captions.example/json3')
 
+    @patch('src.utils.scrapers._baixa_audio_yt_dlp')
+    @patch('src.utils.scrapers.WhisperModel')
+    @patch('src.utils.scrapers.YoutubeDL')
+    @patch('src.utils.scrapers.YouTubeTranscriptApi')
+    def test_carrega_video_usa_faster_whisper_como_fallback(self, mock_api, mock_youtube_dl, mock_whisper, mock_download_audio):
+        mock_api.return_value.fetch.side_effect = RuntimeError('sem transcrição')
+
+        ydl = mock_youtube_dl.return_value.__enter__.return_value
+        ydl.extract_info.return_value = {
+            'subtitles': {},
+            'automatic_captions': {},
+        }
+        mock_download_audio.return_value = Path('audio.webm')
+        model = mock_whisper.return_value
+        model.transcribe.return_value = (
+            [
+                Mock(text='Texto do áudio'),
+                Mock(text='segunda parte'),
+            ],
+            Mock(),
+        )
+
+        with self.assertLogs('src.utils.scrapers', level='WARNING'):
+            texto = carrega_video('https://youtu.be/abc123')
+
+        self.assertEqual(texto, 'Texto do áudio segunda parte')
+        mock_download_audio.assert_called_once()
+        self.assertEqual(mock_download_audio.call_args.args[0], 'https://youtu.be/abc123')
+        model.transcribe.assert_called_once_with(
+            'audio.webm',
+            language=None,
+            beam_size=5,
+            vad_filter=True,
+        )
+
     @patch('src.utils.scrapers.YoutubeDL')
     @patch('src.utils.scrapers.YouTubeTranscriptApi')
     def test_carrega_video_retorna_erro_contextual_em_rate_limit(self, mock_api, mock_youtube_dl):
@@ -119,6 +161,7 @@ class ScrapersTest(unittest.TestCase):
         self.assertEqual(texto, '')
         self.assertIn('HTTP 429 Too Many Requests', texto.error_message)
         self.assertIn(YOUTUBE_COOKIES_BROWSER_ENV, texto.error_message)
+        self.assertIn(YOUTUBE_AUDIO_DOWNLOAD_HINT, texto.error_message)
 
     @patch('src.utils.scrapers.YoutubeDL')
     @patch('src.utils.scrapers.YouTubeTranscriptApi')
@@ -175,6 +218,11 @@ class ScrapersTest(unittest.TestCase):
 
         self.assertEqual(options['cookiefile'], 'C:\\tmp\\youtube_cookies.txt')
         self.assertNotIn('cookiesfrombrowser', options)
+
+    @patch.dict(os.environ, {'CITYBOT_WHISPER_MAX_AUDIO_SECONDS': '60'})
+    def test_valida_duracao_audio_bloqueia_video_longo(self):
+        with self.assertRaisesRegex(RuntimeError, 'excede o limite de 60 segundos'):
+            _valida_duracao_audio({'duration': 120})
 
 
 class PdfReaderTest(unittest.TestCase):

@@ -3,6 +3,8 @@ import json
 import logging
 import os
 import re
+import tempfile
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from xml.etree import ElementTree
 
@@ -18,6 +20,11 @@ try:
     from yt_dlp import YoutubeDL
 except ImportError:
     YoutubeDL = None
+
+try:
+    from faster_whisper import WhisperModel
+except ImportError:
+    WhisperModel = None
 
 
 logger = logging.getLogger(__name__)
@@ -44,6 +51,20 @@ YOUTUBE_INVALID_COOKIES_FILE_HINT = (
     'Netscape cookies.txt aceito pelo yt-dlp. Exporte os cookies novamente nesse '
     'formato; arquivos JSON, HTML ou SQLite do navegador não funcionam.'
 )
+YOUTUBE_AUDIO_DOWNLOAD_HINT = (
+    'Também não foi possível baixar o áudio do vídeo para tentar a transcrição '
+    'local. Isso pode acontecer por bloqueio do YouTube, vídeo privado/restrito, '
+    'cookies inválidos ou falha de conexão.'
+)
+WHISPER_MODEL_ENV = 'CITYBOT_WHISPER_MODEL'
+WHISPER_DEVICE_ENV = 'CITYBOT_WHISPER_DEVICE'
+WHISPER_COMPUTE_TYPE_ENV = 'CITYBOT_WHISPER_COMPUTE_TYPE'
+WHISPER_LANGUAGE_ENV = 'CITYBOT_WHISPER_LANGUAGE'
+WHISPER_MAX_AUDIO_SECONDS_ENV = 'CITYBOT_WHISPER_MAX_AUDIO_SECONDS'
+DEFAULT_WHISPER_MODEL = 'base'
+DEFAULT_WHISPER_DEVICE = 'cpu'
+DEFAULT_WHISPER_COMPUTE_TYPE = 'int8'
+DEFAULT_WHISPER_MAX_AUDIO_SECONDS = 3600
 
 
 class ExtractedContent(str):
@@ -113,6 +134,11 @@ def carrega_video(url_video):
         return caption_text
     errors.append(caption_error)
 
+    audio_text, audio_error = _transcreve_audio_youtube(url_video)
+    if audio_text:
+        return audio_text
+    errors.append(audio_error)
+
     return ExtractedContent('', _mensagem_erro_video(errors))
 
 
@@ -163,6 +189,111 @@ def _carrega_legendas_yt_dlp(url_video):
 def _baixa_legenda_yt_dlp(ydl, caption):
     response = ydl.urlopen(caption['url'])
     return response.read().decode('utf-8', errors='replace')
+
+
+def _transcreve_audio_youtube(url_video):
+    if YoutubeDL is None:
+        message = 'yt-dlp não está instalado. Execute pip install -r requirements.txt.'
+        logger.warning(message)
+        return '', message
+    if WhisperModel is None:
+        message = 'faster-whisper não está instalado. Execute pip install -r requirements.txt.'
+        logger.warning(message)
+        return '', message
+
+    try:
+        with tempfile.TemporaryDirectory(prefix='citybot_youtube_audio_') as temp_dir:
+            try:
+                audio_path = _baixa_audio_yt_dlp(url_video, temp_dir)
+            except Exception as e:
+                message = f'Não foi possível baixar o áudio do vídeo para transcrição local: {e}'
+                logger.error(message)
+                return '', message
+
+            try:
+                text = _transcreve_audio_whisper(audio_path)
+            except Exception as e:
+                message = f'O áudio foi baixado, mas não foi possível transcrever com faster-whisper: {e}'
+                logger.error(message)
+                return '', message
+
+            if text:
+                return text, ''
+            message = 'O áudio foi baixado, mas o Whisper não encontrou fala legível.'
+            logger.warning(message)
+            return '', message
+    except Exception as e:
+        message = f'Erro ao transcrever áudio do vídeo com faster-whisper: {e}'
+        logger.error(message)
+        return '', message
+
+
+def _baixa_audio_yt_dlp(url_video, output_dir):
+    output_path = Path(output_dir)
+    options = _audio_yt_dlp_options(output_path)
+
+    with YoutubeDL(options) as ydl:
+        info = ydl.extract_info(url_video, download=False)
+        _valida_duracao_audio(info or {})
+        before_download = set(output_path.iterdir())
+        ydl.extract_info(url_video, download=True)
+
+    downloaded_files = [
+        path
+        for path in output_path.iterdir()
+        if path.is_file() and path not in before_download
+    ]
+    if not downloaded_files:
+        downloaded_files = [path for path in output_path.iterdir() if path.is_file()]
+    if not downloaded_files:
+        raise RuntimeError('yt-dlp não gerou arquivo de áudio.')
+
+    return max(downloaded_files, key=lambda path: path.stat().st_size)
+
+
+def _audio_yt_dlp_options(output_path):
+    options = _yt_dlp_options()
+    options.update({
+        'format': 'bestaudio/best',
+        'outtmpl': str(output_path / '%(id)s.%(ext)s'),
+    })
+    return options
+
+
+def _valida_duracao_audio(video_info):
+    max_seconds = _env_int(WHISPER_MAX_AUDIO_SECONDS_ENV, DEFAULT_WHISPER_MAX_AUDIO_SECONDS)
+    duration = int(video_info.get('duration') or 0)
+    if max_seconds > 0 and duration > max_seconds:
+        raise RuntimeError(
+            f'Vídeo com {duration} segundos excede o limite de {max_seconds} segundos '
+            f'para transcrição local. Ajuste {WHISPER_MAX_AUDIO_SECONDS_ENV} se quiser permitir vídeos maiores.'
+        )
+
+
+def _transcreve_audio_whisper(audio_path):
+    model = WhisperModel(
+        os.getenv(WHISPER_MODEL_ENV, DEFAULT_WHISPER_MODEL).strip() or DEFAULT_WHISPER_MODEL,
+        device=os.getenv(WHISPER_DEVICE_ENV, DEFAULT_WHISPER_DEVICE).strip() or DEFAULT_WHISPER_DEVICE,
+        compute_type=os.getenv(WHISPER_COMPUTE_TYPE_ENV, DEFAULT_WHISPER_COMPUTE_TYPE).strip() or DEFAULT_WHISPER_COMPUTE_TYPE,
+    )
+    language = os.getenv(WHISPER_LANGUAGE_ENV, '').strip() or None
+    segments, _ = model.transcribe(
+        str(audio_path),
+        language=language,
+        beam_size=5,
+        vad_filter=True,
+    )
+    return _normaliza_texto(segment.text for segment in segments if segment.text)
+
+
+def _env_int(name, default):
+    value = os.getenv(name, '').strip()
+    if not value:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
 
 
 def _yt_dlp_options():
@@ -271,15 +402,29 @@ def _mensagem_erro_video(errors):
     details = ' | '.join(errors)
 
     if _is_browser_cookie_database_locked(details):
-        return YOUTUBE_COOKIE_DATABASE_HINT
+        return _adiciona_detalhe_download_audio(YOUTUBE_COOKIE_DATABASE_HINT, details)
     if _is_invalid_cookie_file(details):
-        return YOUTUBE_INVALID_COOKIES_FILE_HINT
+        return _adiciona_detalhe_download_audio(YOUTUBE_INVALID_COOKIES_FILE_HINT, details)
     if _is_youtube_rate_limit(details):
-        return YOUTUBE_RATE_LIMIT_HINT
+        return _adiciona_detalhe_download_audio(YOUTUBE_RATE_LIMIT_HINT, details)
 
     if details:
         return f'Não foi possível extrair conteúdo desse vídeo. Detalhes: {details}'
     return 'Não foi possível extrair conteúdo desse vídeo.'
+
+
+def _adiciona_detalhe_download_audio(message, details):
+    if _is_audio_download_failure(details):
+        return f'{message} {YOUTUBE_AUDIO_DOWNLOAD_HINT}'
+    return message
+
+
+def _is_audio_download_failure(message):
+    lowered_message = message.lower()
+    return (
+        'não foi possível baixar o áudio do vídeo' in lowered_message
+        or 'yt-dlp não gerou arquivo de áudio' in lowered_message
+    )
 
 
 def _is_youtube_rate_limit(message):
