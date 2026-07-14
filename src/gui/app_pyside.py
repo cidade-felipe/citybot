@@ -40,6 +40,8 @@ class ModernCityBotGUI(QMainWindow):
         self.conversation_history = []
         self.is_processing = False
         self._worker_signals = []
+        self.last_ocr_text = ''
+        self.last_ocr_name = 'ocr_texto'
 
         self.colors = {
             'bg_primary': '#101214',
@@ -140,6 +142,10 @@ class ModernCityBotGUI(QMainWindow):
         QPushButton:hover {{
             background: {self.colors['surface_hover']};
         }}
+        QPushButton:disabled {{
+            color: {self.colors['text_secondary']};
+            background: {self.colors['bg_tertiary']};
+        }}
         QPushButton[variant="accent"] {{
             color: {self.colors['bg_primary']};
             background: {self.colors['accent']};
@@ -223,6 +229,10 @@ class ModernCityBotGUI(QMainWindow):
         ]
         for text, callback, variant in actions:
             layout.addWidget(self._button(text, callback, variant))
+
+        self.download_ocr_button = self._button('💾  Salvar Texto OCR', self.download_ocr_text, '')
+        self.download_ocr_button.setEnabled(False)
+        layout.addWidget(self.download_ocr_button)
 
         context_title = QLabel('Contexto Atual')
         context_title.setProperty('role', 'accent')
@@ -472,6 +482,7 @@ class ModernCityBotGUI(QMainWindow):
         self.set_status('●  Erro', 'error')
 
     def set_chat_mode(self):
+        self._clear_ocr_export()
         self.current_context = ''
         self.context_label.setText('Chat Livre')
         self.add_system_message('Modo Chat Livre', 'Pergunte o que quiser. Estou pronto para conversar.')
@@ -485,16 +496,19 @@ class ModernCityBotGUI(QMainWindow):
     def load_website(self):
         url, ok = QInputDialog.getText(self, 'Carregar Site', 'Digite a URL do site:')
         if ok and url.strip():
+            self._clear_ocr_export()
             self._load_context('Site', url.strip(), lambda: self.bot.carrega_site(url.strip()), f'{url[:50]}...')
 
     def load_video(self):
         url, ok = QInputDialog.getText(self, 'Carregar Vídeo', 'Digite a URL do YouTube:')
         if ok and url.strip():
+            self._clear_ocr_export()
             self._load_context('Vídeo', url.strip(), lambda: self.bot.carrega_video(url.strip()), url.strip())
 
     def load_pdf(self):
         filename, _ = QFileDialog.getOpenFileName(self, 'Selecionar PDF', '', 'PDF files (*.pdf);;All files (*.*)')
         if filename:
+            self._clear_ocr_export()
             self._load_context('PDF', filename, lambda: self.bot.carrega_pdf(filename), os.path.basename(filename))
 
     def load_image_ocr(self):
@@ -506,9 +520,53 @@ class ModernCityBotGUI(QMainWindow):
         )
         if filename:
             name = os.path.splitext(os.path.basename(filename))[0]
-            self._load_context('OCR', filename, lambda: self.bot.carrega_imagem_ocr(filename, name), os.path.basename(filename))
+            self._load_context(
+                'OCR',
+                filename,
+                lambda: self.bot.carrega_imagem_ocr(filename, name),
+                os.path.basename(filename),
+                after_success=lambda content: self._set_ocr_export(content, name),
+            )
 
-    def _load_context(self, source_type, source_ref, loader, display_name):
+    def download_ocr_text(self):
+        if not self.last_ocr_text.strip():
+            QMessageBox.information(self, 'Baixar Texto OCR', 'Carregue uma imagem com OCR antes de baixar o texto.')
+            return
+
+        default_path = PROJECT_ROOT / 'textos' / f'{self.last_ocr_name or "ocr_texto"}.txt'
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            'Baixar Texto OCR',
+            str(default_path),
+            'Text files (*.txt);;All files (*.*)',
+        )
+        if not filename:
+            return
+
+        try:
+            output_path = Path(filename)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(self.last_ocr_text, encoding='utf-8')
+        except OSError as error:
+            self.show_error(f'Não foi possível salvar o texto OCR: {error}')
+            return
+
+        self.set_status('●  Texto OCR salvo', 'success')
+        self.add_system_message('Texto OCR salvo', f'Arquivo salvo em: {filename}')
+
+    def _set_ocr_export(self, content, name):
+        self.last_ocr_text = str(content or '')
+        self.last_ocr_name = name or 'ocr_texto'
+        if hasattr(self, 'download_ocr_button'):
+            self.download_ocr_button.setEnabled(bool(self.last_ocr_text.strip()))
+
+    def _clear_ocr_export(self):
+        self.last_ocr_text = ''
+        self.last_ocr_name = 'ocr_texto'
+        if hasattr(self, 'download_ocr_button'):
+            self.download_ocr_button.setEnabled(False)
+
+    def _load_context(self, source_type, source_ref, loader, display_name, after_success=None):
         self.set_status(f'●  Carregando {source_type.lower()}...', 'warning')
 
         def on_success(content):
@@ -518,6 +576,8 @@ class ModernCityBotGUI(QMainWindow):
                 self.show_error(str(error))
                 return
             self.context_label.setText(f'{source_type}: {display_name}')
+            if after_success:
+                after_success(content)
             self.add_system_message(f'{source_type} carregado', f'Agora você pode fazer perguntas sobre: {display_name}')
             self.set_status('●  Pronto', 'success')
 
@@ -542,6 +602,7 @@ class ModernCityBotGUI(QMainWindow):
         self.clear_message_widgets()
         self.conversation_history = []
         self.current_context = ''
+        self._clear_ocr_export()
         self.context_label.setText('Chat Livre')
         self.add_system_message('Conversa limpa', 'O histórico foi apagado. Comece uma nova conversa.')
 

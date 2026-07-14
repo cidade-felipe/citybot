@@ -1,4 +1,6 @@
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, call, patch
 
 from PySide6.QtWidgets import QMessageBox
@@ -74,6 +76,40 @@ class GuiHistoryTest(unittest.TestCase):
                             'O YouTube bloqueou temporariamente as requisições (HTTP 429 Too Many Requests).',
                         )
                     )
+
+    def test_set_ocr_export_habilita_botao_de_download(self):
+        for gui_class in GUI_CLASSES:
+            with self.subTest(gui=gui_class.__module__):
+                gui = gui_class.__new__(gui_class)
+                gui.download_ocr_button = Mock()
+
+                gui._set_ocr_export('Texto OCR', 'imagem')
+
+                self.assertEqual(gui.last_ocr_text, 'Texto OCR')
+                self.assertEqual(gui.last_ocr_name, 'imagem')
+                gui.download_ocr_button.setEnabled.assert_called_once_with(True)
+
+    def test_download_ocr_text_salva_arquivo_escolhido(self):
+        for gui_class in GUI_CLASSES:
+            with self.subTest(gui=gui_class.__module__):
+                gui = gui_class.__new__(gui_class)
+                gui.last_ocr_text = 'Texto OCR extraído'
+                gui.last_ocr_name = 'imagem'
+                gui.set_status = Mock()
+                gui.add_system_message = Mock()
+
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    output_path = Path(temp_dir) / 'ocr.txt'
+                    with patch(
+                        f'{gui_class.download_ocr_text.__module__}.QFileDialog.getSaveFileName',
+                        return_value=(str(output_path), 'Text files (*.txt)'),
+                    ):
+                        gui.download_ocr_text()
+
+                    self.assertEqual(output_path.read_text(encoding='utf-8'), 'Texto OCR extraído')
+
+                gui.set_status.assert_called_once_with('●  Texto OCR salvo', 'success')
+                gui.add_system_message.assert_called_once()
 
 
 if __name__ == '__main__':

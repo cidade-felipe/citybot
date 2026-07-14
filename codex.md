@@ -832,6 +832,7 @@ Fato: opcoes de fonte na sidebar:
 - Carregar Video.
 - Carregar PDF.
 - OCR Imagem.
+- Baixar Texto OCR apos carregar uma imagem com OCR.
 - Limpar Conversa.
 
 Fato: a GUI usa `threading.Thread(..., daemon=True)` para processar mensagens e carregamentos externos.

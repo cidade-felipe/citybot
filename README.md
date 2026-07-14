@@ -22,7 +22,7 @@ O CityBot foi pensado como um assistente pessoal para estudo e trabalho, capaz d
 - Ler e resumir PDFs
 - Ler e interpretar páginas da web
 - Transcrever e analisar vídeos do YouTube
-- Ler texto em imagens usando OCR e salvar o resultado
+- Ler texto em imagens usando OCR, salvar e baixar o resultado em `.txt`
 - Manter histórico de conversas em um banco SQLite
 - Oferecer interação tanto por linha de comando quanto por interface gráfica desenvolvida em PySide6
 
