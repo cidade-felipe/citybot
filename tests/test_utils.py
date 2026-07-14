@@ -3,7 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 root_path = Path(__file__).resolve().parents[1]
 if str(root_path) not in sys.path:
@@ -19,7 +19,11 @@ from src.utils.scrapers import (
     YOUTUBE_COOKIES_BROWSER_ENV,
     YOUTUBE_COOKIES_FILE_ENV,
     YOUTUBE_COOKIES_PROFILE_ENV,
+    _audio_yt_dlp_options,
+    _baixa_audio_yt_dlp,
+    _carrega_legendas_yt_dlp,
     _extrai_video_id,
+    _filtro_duracao_audio,
     _yt_dlp_options,
     _valida_duracao_audio,
     carrega_site,
@@ -174,7 +178,7 @@ class ScrapersTest(unittest.TestCase):
 
         self.assertIsInstance(texto, ExtractedContent)
         self.assertEqual(texto, '')
-        self.assertIn('não conseguiu copiar o banco de cookies', texto.error_message)
+        self.assertIn('não conseguiu acessar ou descriptografar os cookies', texto.error_message)
         self.assertIn(YOUTUBE_COOKIES_FILE_ENV, texto.error_message)
 
     @patch('src.utils.scrapers.YoutubeDL')
@@ -218,6 +222,134 @@ class ScrapersTest(unittest.TestCase):
 
         self.assertEqual(options['cookiefile'], 'C:\\tmp\\youtube_cookies.txt')
         self.assertNotIn('cookiesfrombrowser', options)
+
+    @patch.dict(
+        os.environ,
+        {
+            YOUTUBE_COOKIES_BROWSER_ENV: 'chrome',
+            YOUTUBE_COOKIES_PROFILE_ENV: '',
+            YOUTUBE_COOKIES_FILE_ENV: '',
+        },
+    )
+    def test_ytdlp_options_pode_ignorar_cookies_do_navegador(self):
+        options = _yt_dlp_options(use_browser_cookies=False)
+
+        self.assertNotIn('cookiesfrombrowser', options)
+
+    def test_audio_ytdlp_options_permite_download(self):
+        options = _audio_yt_dlp_options(Path('downloads'))
+
+        self.assertEqual(options['format'], 'bestaudio/best')
+        self.assertFalse(options['skip_download'])
+        self.assertIn('%(id)s.%(ext)s', options['outtmpl'])
+        self.assertIs(options['match_filter'], _filtro_duracao_audio)
+
+    @patch.dict(
+        os.environ,
+        {
+            YOUTUBE_COOKIES_BROWSER_ENV: 'chrome',
+            YOUTUBE_COOKIES_PROFILE_ENV: '',
+            YOUTUBE_COOKIES_FILE_ENV: '',
+        },
+    )
+    @patch('src.utils.scrapers.YoutubeDL')
+    def test_carrega_legendas_tenta_sem_cookies_quando_dpapi_falha(self, mock_youtube_dl):
+        second_context = MagicMock()
+        ydl = second_context.__enter__.return_value
+        ydl.extract_info.return_value = {
+            'subtitles': {},
+            'automatic_captions': {
+                'pt': [
+                    {
+                        'ext': 'json3',
+                        'url': 'https://captions.example/json3',
+                    },
+                ],
+            },
+        }
+        response = Mock()
+        response.read.return_value = b'{"events": [{"segs": [{"utf8": "legenda ok"}]}]}'
+        ydl.urlopen.return_value = response
+        mock_youtube_dl.side_effect = [
+            RuntimeError('Failed to decrypt with DPAPI'),
+            second_context,
+        ]
+
+        with self.assertLogs('src.utils.scrapers', level='WARNING'):
+            text, error = _carrega_legendas_yt_dlp('https://youtu.be/abc123')
+
+        self.assertEqual(text, 'legenda ok')
+        self.assertEqual(error, '')
+        first_options = mock_youtube_dl.call_args_list[0].args[0]
+        second_options = mock_youtube_dl.call_args_list[1].args[0]
+        self.assertIn('cookiesfrombrowser', first_options)
+        self.assertNotIn('cookiesfrombrowser', second_options)
+
+    @patch('src.utils.scrapers.YoutubeDL')
+    def test_baixa_audio_usa_download_do_ytdlp(self, mock_youtube_dl):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ydl = mock_youtube_dl.return_value.__enter__.return_value
+
+            def cria_arquivo_baixado(_urls):
+                Path(temp_dir, 'audio.webm').write_text('audio')
+                return 0
+
+            ydl.download.side_effect = cria_arquivo_baixado
+
+            audio_path = _baixa_audio_yt_dlp('https://youtu.be/abc123', temp_dir)
+
+        self.assertEqual(audio_path.name, 'audio.webm')
+        ydl.extract_info.assert_not_called()
+        ydl.download.assert_called_once_with(['https://youtu.be/abc123'])
+
+    @patch.dict(
+        os.environ,
+        {
+            YOUTUBE_COOKIES_BROWSER_ENV: 'chrome',
+            YOUTUBE_COOKIES_PROFILE_ENV: '',
+            YOUTUBE_COOKIES_FILE_ENV: '',
+        },
+    )
+    @patch('src.utils.scrapers.YoutubeDL')
+    def test_baixa_audio_tenta_sem_cookies_quando_dpapi_falha(self, mock_youtube_dl):
+        second_context = MagicMock()
+        ydl = second_context.__enter__.return_value
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            def cria_arquivo_baixado(_urls):
+                Path(temp_dir, 'audio.webm').write_text('audio')
+                return 0
+
+            ydl.download.side_effect = cria_arquivo_baixado
+            mock_youtube_dl.side_effect = [
+                RuntimeError('Failed to decrypt with DPAPI'),
+                second_context,
+            ]
+
+            with self.assertLogs('src.utils.scrapers', level='WARNING'):
+                audio_path = _baixa_audio_yt_dlp('https://youtu.be/abc123', temp_dir)
+
+        self.assertEqual(audio_path.name, 'audio.webm')
+        first_options = mock_youtube_dl.call_args_list[0].args[0]
+        second_options = mock_youtube_dl.call_args_list[1].args[0]
+        self.assertIn('cookiesfrombrowser', first_options)
+        self.assertNotIn('cookiesfrombrowser', second_options)
+        ydl.download.assert_called_once_with(['https://youtu.be/abc123'])
+
+    @patch.dict(os.environ, {'CITYBOT_WHISPER_MAX_AUDIO_SECONDS': '60'})
+    def test_filtro_duracao_audio_rejeita_video_longo(self):
+        message = _filtro_duracao_audio({'duration': 120})
+
+        self.assertIn('excede o limite de 60 segundos', message)
+
+    @patch.dict(os.environ, {YOUTUBE_COOKIES_BROWSER_ENV: '', YOUTUBE_COOKIES_FILE_ENV: '', 'CITYBOT_WHISPER_MAX_AUDIO_SECONDS': ''})
+    def test_filtro_duracao_audio_permite_video_de_pouco_mais_de_uma_hora(self):
+        self.assertIsNone(_filtro_duracao_audio({'duration': 3886, 'live_status': 'was_live'}))
+
+    def test_filtro_duracao_audio_rejeita_live_em_andamento(self):
+        message = _filtro_duracao_audio({'is_live': True, 'live_status': 'is_live'})
+
+        self.assertIn('transmissão terminar', message)
 
     @patch.dict(os.environ, {'CITYBOT_WHISPER_MAX_AUDIO_SECONDS': '60'})
     def test_valida_duracao_audio_bloqueia_video_longo(self):

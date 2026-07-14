@@ -629,9 +629,9 @@ Fato: `carrega_video(url_video)`:
 - Se a transcricao direta falhar ou vier vazia, usa `yt-dlp` para buscar metadados do video e selecionar legendas oficiais ou automaticas.
 - O fallback via `yt-dlp` prioriza legendas em portugues e ingles, baixa somente o arquivo de legenda pela propria camada de rede do `yt-dlp` e extrai texto de formatos como `json3`, `vtt`, `srv3` e `ttml`.
 - Se transcricao e legendas falharem, baixa temporariamente apenas o audio com `yt-dlp` e transcreve localmente com `faster-whisper`.
-- O fallback de audio usa `CITYBOT_WHISPER_MODEL=base`, `CITYBOT_WHISPER_DEVICE=cpu`, `CITYBOT_WHISPER_COMPUTE_TYPE=int8` e limite de 3600 segundos por padrao.
+- O fallback de audio usa `CITYBOT_WHISPER_MODEL=base`, `CITYBOT_WHISPER_DEVICE=cpu`, `CITYBOT_WHISPER_COMPUTE_TYPE=int8` e limite de 7200 segundos por padrao; transmissoes ainda ao vivo sao recusadas ate terminarem.
 - Quando o YouTube retorna `HTTP 429 Too Many Requests`, a GUI exibe uma mensagem especifica sugerindo configurar `CITYBOT_YOUTUBE_COOKIES_BROWSER`; se o fallback local tambem nao conseguir baixar o audio, a mensagem informa essa falha adicional.
-- Quando o `yt-dlp` nao consegue copiar o banco de cookies do Chrome/Edge, a GUI exibe uma mensagem especifica sugerindo fechar o navegador ou usar `CITYBOT_YOUTUBE_COOKIES_FILE`.
+- Quando o `yt-dlp` nao consegue copiar ou descriptografar cookies do Chrome/Edge, o fallback tenta novamente sem cookies do navegador; se a requisicao anonima tambem falhar, a GUI exibe uma mensagem especifica sugerindo fechar o navegador ou usar `CITYBOT_YOUTUBE_COOKIES_FILE`.
 - Quando `CITYBOT_YOUTUBE_COOKIES_FILE` aponta para arquivo fora do formato Netscape cookies.txt, a GUI exibe uma mensagem especifica explicando que JSON, HTML ou SQLite nao funcionam.
 - Usa `truststore` para validar HTTPS com o repositorio de certificados do sistema operacional.
 - Concatena textos da transcricao.

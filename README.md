@@ -173,14 +173,14 @@ CITYBOT_WHISPER_MODEL=base
 CITYBOT_WHISPER_DEVICE=cpu
 CITYBOT_WHISPER_COMPUTE_TYPE=int8
 CITYBOT_WHISPER_LANGUAGE=pt
-CITYBOT_WHISPER_MAX_AUDIO_SECONDS=3600
+CITYBOT_WHISPER_MAX_AUDIO_SECONDS=7200
 ```
 
 Se as respostas do Azure OpenAI ficarem cortadas, aumente `AZURE_MAX_OUTPUT_TOKENS`. O valor `300` é baixo para resumos longos, análises e respostas com listas.
 
-Para vídeos do YouTube, as variáveis de cookies são opcionais. Use apenas se aparecer erro `HTTP 429 Too Many Requests` ou bloqueio de transcrição. Valores comuns de `CITYBOT_YOUTUBE_COOKIES_BROWSER`: `chrome`, `edge` ou `firefox`. Se o Chrome/Edge estiver bloqueando o banco de cookies, feche o navegador completamente ou prefira `CITYBOT_YOUTUBE_COOKIES_FILE` com um arquivo `cookies.txt` no formato Netscape. Arquivos JSON, HTML, SQLite ou texto copiado manualmente não são aceitos pelo `yt-dlp`.
+Para vídeos do YouTube, as variáveis de cookies são opcionais. Use apenas se aparecer erro `HTTP 429 Too Many Requests` ou bloqueio de transcrição. Valores comuns de `CITYBOT_YOUTUBE_COOKIES_BROWSER`: `chrome`, `edge` ou `firefox`. Se o Chrome/Edge estiver bloqueando ou falhando ao descriptografar cookies com DPAPI, o CityBot tenta novamente sem cookies do navegador; se a requisição anônima também for bloqueada, feche o navegador completamente ou prefira `CITYBOT_YOUTUBE_COOKIES_FILE` com um arquivo `cookies.txt` no formato Netscape. Arquivos JSON, HTML, SQLite ou texto copiado manualmente não são aceitos pelo `yt-dlp`.
 
-Se transcrição e legendas do YouTube falharem, o CityBot baixa temporariamente apenas o áudio e tenta transcrever localmente com `faster-whisper`. O primeiro uso pode demorar porque o modelo é baixado automaticamente. `CITYBOT_WHISPER_MODEL` usa `base` por padrão; modelos maiores tendem a ser melhores, mas mais lentos. `CITYBOT_WHISPER_LANGUAGE` pode ficar vazio para detecção automática.
+Se transcrição e legendas do YouTube falharem, o CityBot baixa temporariamente apenas o áudio e tenta transcrever localmente com `faster-whisper`. O primeiro uso pode demorar porque o modelo é baixado automaticamente. `CITYBOT_WHISPER_MODEL` usa `base` por padrão; modelos maiores tendem a ser melhores, mas mais lentos. `CITYBOT_WHISPER_LANGUAGE` pode ficar vazio para detecção automática. Por padrão, o fallback local aceita vídeos de até 7200 segundos; transmissões ainda ao vivo são recusadas até terminarem.
 
 Exemplos de modelos da Groq que podem ser usados:
 

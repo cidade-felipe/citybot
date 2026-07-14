@@ -42,8 +42,9 @@ YOUTUBE_RATE_LIMIT_HINT = (
     'CITYBOT_YOUTUBE_COOKIES_FILE com um arquivo cookies.txt.'
 )
 YOUTUBE_COOKIE_DATABASE_HINT = (
-    'O yt-dlp não conseguiu copiar o banco de cookies do navegador. Feche '
-    'totalmente o Chrome/Edge, inclusive processos em segundo plano, ou use '
+    'O yt-dlp não conseguiu acessar ou descriptografar os cookies do navegador. '
+    'O CityBot tenta continuar sem esses cookies, mas se o YouTube bloquear a '
+    'requisição anônima, feche totalmente o Chrome/Edge ou use '
     'CITYBOT_YOUTUBE_COOKIES_FILE apontando para um arquivo cookies.txt.'
 )
 YOUTUBE_INVALID_COOKIES_FILE_HINT = (
@@ -64,7 +65,7 @@ WHISPER_MAX_AUDIO_SECONDS_ENV = 'CITYBOT_WHISPER_MAX_AUDIO_SECONDS'
 DEFAULT_WHISPER_MODEL = 'base'
 DEFAULT_WHISPER_DEVICE = 'cpu'
 DEFAULT_WHISPER_COMPUTE_TYPE = 'int8'
-DEFAULT_WHISPER_MAX_AUDIO_SECONDS = 3600
+DEFAULT_WHISPER_MAX_AUDIO_SECONDS = 7200
 
 
 class ExtractedContent(str):
@@ -164,8 +165,20 @@ def _carrega_legendas_yt_dlp(url_video):
         logger.warning(message)
         return '', message
 
+    text, error = _tenta_carregar_legendas_yt_dlp(url_video, use_browser_cookies=True)
+    if text or not _deve_tentar_sem_cookies_do_navegador(error):
+        return text, error
+
+    logger.warning('Falha ao usar cookies do navegador no yt-dlp. Tentando novamente sem cookies do navegador.')
+    retry_text, retry_error = _tenta_carregar_legendas_yt_dlp(url_video, use_browser_cookies=False)
+    if retry_text:
+        return retry_text, ''
+    return '', f'{error} | Tentativa sem cookies do navegador: {retry_error}'
+
+
+def _tenta_carregar_legendas_yt_dlp(url_video, use_browser_cookies):
     try:
-        with YoutubeDL(_yt_dlp_options()) as ydl:
+        with YoutubeDL(_yt_dlp_options(use_browser_cookies=use_browser_cookies)) as ydl:
             video_info = ydl.extract_info(url_video, download=False)
             caption = _seleciona_legenda(video_info or {})
             if not caption:
@@ -229,14 +242,30 @@ def _transcreve_audio_youtube(url_video):
 
 
 def _baixa_audio_yt_dlp(url_video, output_dir):
+    try:
+        return _tenta_baixar_audio_yt_dlp(url_video, output_dir, use_browser_cookies=True)
+    except Exception as e:
+        if not _deve_tentar_sem_cookies_do_navegador(str(e)):
+            raise
+
+        logger.warning('Falha ao usar cookies do navegador no download de áudio. Tentando novamente sem cookies do navegador.')
+        try:
+            return _tenta_baixar_audio_yt_dlp(url_video, output_dir, use_browser_cookies=False)
+        except Exception as retry_error:
+            raise RuntimeError(
+                f'{e} | Tentativa sem cookies do navegador: {retry_error}'
+            ) from retry_error
+
+
+def _tenta_baixar_audio_yt_dlp(url_video, output_dir, use_browser_cookies):
     output_path = Path(output_dir)
-    options = _audio_yt_dlp_options(output_path)
+    options = _audio_yt_dlp_options(output_path, use_browser_cookies=use_browser_cookies)
 
     with YoutubeDL(options) as ydl:
-        info = ydl.extract_info(url_video, download=False)
-        _valida_duracao_audio(info or {})
         before_download = set(output_path.iterdir())
-        ydl.extract_info(url_video, download=True)
+        result = ydl.download([url_video])
+        if result:
+            raise RuntimeError(f'yt-dlp retornou código {result} ao baixar áudio.')
 
     downloaded_files = [
         path
@@ -251,16 +280,35 @@ def _baixa_audio_yt_dlp(url_video, output_dir):
     return max(downloaded_files, key=lambda path: path.stat().st_size)
 
 
-def _audio_yt_dlp_options(output_path):
-    options = _yt_dlp_options()
+def _audio_yt_dlp_options(output_path, use_browser_cookies=True):
+    options = _yt_dlp_options(use_browser_cookies=use_browser_cookies)
     options.update({
         'format': 'bestaudio/best',
         'outtmpl': str(output_path / '%(id)s.%(ext)s'),
+        'skip_download': False,
+        'match_filter': _filtro_duracao_audio,
     })
     return options
 
 
+def _filtro_duracao_audio(video_info, incomplete=False):
+    if incomplete:
+        return None
+    try:
+        _valida_duracao_audio(video_info or {})
+    except RuntimeError as e:
+        return str(e)
+    return None
+
+
 def _valida_duracao_audio(video_info):
+    live_status = str(video_info.get('live_status') or '').lower()
+    if video_info.get('is_live') or live_status in {'is_live', 'is_upcoming'}:
+        raise RuntimeError(
+            'Vídeo ao vivo ou agendado ainda não está disponível para transcrição local. '
+            'Tente novamente quando a transmissão terminar.'
+        )
+
     max_seconds = _env_int(WHISPER_MAX_AUDIO_SECONDS_ENV, DEFAULT_WHISPER_MAX_AUDIO_SECONDS)
     duration = int(video_info.get('duration') or 0)
     if max_seconds > 0 and duration > max_seconds:
@@ -296,7 +344,7 @@ def _env_int(name, default):
         return default
 
 
-def _yt_dlp_options():
+def _yt_dlp_options(use_browser_cookies=True):
     options = {
         'quiet': True,
         'no_warnings': True,
@@ -319,7 +367,7 @@ def _yt_dlp_options():
         options['cookiefile'] = cookie_file
         return options
 
-    cookies_from_browser = _cookies_from_browser()
+    cookies_from_browser = _cookies_from_browser() if use_browser_cookies else None
     if cookies_from_browser:
         options['cookiesfrombrowser'] = cookies_from_browser
     return options
@@ -419,6 +467,14 @@ def _adiciona_detalhe_download_audio(message, details):
     return message
 
 
+def _deve_tentar_sem_cookies_do_navegador(message):
+    return (
+        bool(_cookies_from_browser())
+        and not os.getenv(YOUTUBE_COOKIES_FILE_ENV, '').strip()
+        and _is_browser_cookie_database_locked(message)
+    )
+
+
 def _is_audio_download_failure(message):
     lowered_message = message.lower()
     return (
@@ -435,8 +491,11 @@ def _is_youtube_rate_limit(message):
 def _is_browser_cookie_database_locked(message):
     lowered_message = message.lower()
     return (
-        'could not copy' in lowered_message
-        and 'cookie database' in lowered_message
+        (
+            'could not copy' in lowered_message
+            and 'cookie database' in lowered_message
+        )
+        or 'failed to decrypt with dpapi' in lowered_message
     )
 
 
