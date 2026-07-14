@@ -111,6 +111,67 @@ class GuiHistoryTest(unittest.TestCase):
                 gui.set_status.assert_called_once_with('●  Texto OCR salvo', 'success')
                 gui.add_system_message.assert_called_once()
 
+    def test_update_download_progress_mostra_porcentagem(self):
+        for gui_class in GUI_CLASSES:
+            with self.subTest(gui=gui_class.__module__):
+                gui = gui_class.__new__(gui_class)
+                gui.download_progress = Mock()
+
+                gui._update_download_progress({'status': 'downloading', 'percent': 42.8})
+
+                gui.download_progress.setRange.assert_called_once_with(0, 100)
+                gui.download_progress.setValue.assert_called_once_with(42)
+                gui.download_progress.setFormat.assert_called_once_with('Baixando áudio: 42%')
+                gui.download_progress.show.assert_called_once_with()
+
+    def test_update_download_progress_sem_total_mostra_indeterminado(self):
+        for gui_class in GUI_CLASSES:
+            with self.subTest(gui=gui_class.__module__):
+                gui = gui_class.__new__(gui_class)
+                gui.download_progress = Mock()
+
+                gui._update_download_progress({'status': 'downloading', 'percent': None})
+
+                gui.download_progress.setRange.assert_called_once_with(0, 0)
+                gui.download_progress.setFormat.assert_called_once_with('Baixando áudio...')
+                gui.download_progress.show.assert_called_once_with()
+
+    def test_download_progress_color_muda_com_percentual(self):
+        for gui_class in GUI_CLASSES:
+            with self.subTest(gui=gui_class.__module__):
+                gui = gui_class.__new__(gui_class)
+
+                self.assertEqual(gui._download_progress_color(0), '#fb7185')
+                self.assertEqual(gui._download_progress_color(50), '#fbbf24')
+                self.assertEqual(gui._download_progress_color(100), '#38d9a9')
+
+    def test_load_context_mostra_titulo_quando_conteudo_tem_metadado(self):
+        for gui_class in GUI_CLASSES:
+            with self.subTest(gui=gui_class.__module__):
+                gui = gui_class.__new__(gui_class)
+                gui.context_label = Mock()
+                gui.add_system_message = Mock()
+                gui.set_status = Mock()
+                gui._hide_download_progress = Mock()
+
+                def run_task(loader, on_success, **_kwargs):
+                    on_success(loader())
+
+                gui._run_task = run_task
+
+                gui._load_context(
+                    'Vídeo',
+                    'https://youtu.be/abc123',
+                    lambda: ExtractedContent('Texto do vídeo', source_title='Título do vídeo'),
+                    'https://youtu.be/abc123',
+                )
+
+                gui.context_label.setText.assert_called_once_with('Vídeo: Título do vídeo')
+                gui.add_system_message.assert_called_once_with(
+                    'Vídeo carregado',
+                    'Agora você pode fazer perguntas sobre: Título do vídeo',
+                )
+
 
 if __name__ == '__main__':
     unittest.main()

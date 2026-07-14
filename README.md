@@ -35,6 +35,7 @@ Ele suporta opções de inteligência artificial através das APIs da Groq, Goog
 - Chat em linguagem natural com modelos LLM via Groq, Gemini ou Azure OpenAI
 - Leitura de conteúdo de sites com `requests` e `BeautifulSoup`
 - Transcrição de vídeos do YouTube com `youtube-transcript-api`, legendas via `yt-dlp` e fallback local com `faster-whisper`
+- Barra de progresso na GUI quando o fallback precisa baixar áudio de vídeo
 - Leitura de PDFs com `pypdf`
 - OCR de imagens com OpenCV + Tesseract + langdetect
 - Salvamento de texto de imagens em `.docx` e `.txt`

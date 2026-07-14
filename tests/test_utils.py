@@ -24,6 +24,7 @@ from src.utils.scrapers import (
     _carrega_legendas_yt_dlp,
     _extrai_video_id,
     _filtro_duracao_audio,
+    _normaliza_progresso_yt_dlp,
     _yt_dlp_options,
     _valida_duracao_audio,
     carrega_site,
@@ -60,8 +61,9 @@ class ScrapersTest(unittest.TestCase):
             with self.subTest(url=url):
                 self.assertEqual(_extrai_video_id(url), expected)
 
+    @patch('src.utils.scrapers._extract_video_title', return_value='Título do vídeo')
     @patch('src.utils.scrapers.YouTubeTranscriptApi')
-    def test_carrega_video_usa_api_compativel_com_dependencia(self, mock_api):
+    def test_carrega_video_usa_api_compativel_com_dependencia(self, mock_api, mock_title):
         mock_api.return_value.fetch.return_value = [
             Mock(text='Primeira parte'),
             Mock(text='segunda parte'),
@@ -70,6 +72,8 @@ class ScrapersTest(unittest.TestCase):
         texto = carrega_video('https://youtu.be/abc123')
 
         self.assertEqual(texto, 'Primeira parte segunda parte')
+        self.assertEqual(texto.source_title, 'Título do vídeo')
+        mock_title.assert_called_once_with('https://youtu.be/abc123')
         mock_api.return_value.fetch.assert_called_once_with(
             'abc123',
             languages=VIDEO_LANGUAGES,
@@ -82,6 +86,7 @@ class ScrapersTest(unittest.TestCase):
 
         ydl = mock_youtube_dl.return_value.__enter__.return_value
         ydl.extract_info.return_value = {
+            'title': 'Título do vídeo',
             'subtitles': {
                 'en': [
                     {
@@ -113,6 +118,7 @@ class ScrapersTest(unittest.TestCase):
             texto = carrega_video('https://youtu.be/abc123')
 
         self.assertEqual(texto, 'Primeira parte segunda parte')
+        self.assertEqual(texto.source_title, 'Título do vídeo')
         ydl.extract_info.assert_called_once_with('https://youtu.be/abc123', download=False)
         ydl.urlopen.assert_called_once_with('https://captions.example/json3')
 
@@ -125,6 +131,7 @@ class ScrapersTest(unittest.TestCase):
 
         ydl = mock_youtube_dl.return_value.__enter__.return_value
         ydl.extract_info.return_value = {
+            'title': 'Título do vídeo',
             'subtitles': {},
             'automatic_captions': {},
         }
@@ -142,6 +149,7 @@ class ScrapersTest(unittest.TestCase):
             texto = carrega_video('https://youtu.be/abc123')
 
         self.assertEqual(texto, 'Texto do áudio segunda parte')
+        self.assertEqual(texto.source_title, 'Título do vídeo')
         mock_download_audio.assert_called_once()
         self.assertEqual(mock_download_audio.call_args.args[0], 'https://youtu.be/abc123')
         model.transcribe.assert_called_once_with(
@@ -243,6 +251,37 @@ class ScrapersTest(unittest.TestCase):
         self.assertFalse(options['skip_download'])
         self.assertIn('%(id)s.%(ext)s', options['outtmpl'])
         self.assertIs(options['match_filter'], _filtro_duracao_audio)
+
+    def test_audio_ytdlp_options_envia_progresso(self):
+        progress_callback = Mock()
+        options = _audio_yt_dlp_options(Path('downloads'), progress_callback=progress_callback)
+
+        options['progress_hooks'][0]({
+            'status': 'downloading',
+            'downloaded_bytes': 50,
+            'total_bytes': 100,
+            'speed': 10,
+            'eta': 5,
+        })
+
+        progress_callback.assert_called_once_with({
+            'status': 'downloading',
+            'downloaded_bytes': 50,
+            'total_bytes': 100,
+            'percent': 50.0,
+            'speed': 10,
+            'eta': 5,
+        })
+
+    def test_normaliza_progresso_yt_dlp_sem_total(self):
+        progress = _normaliza_progresso_yt_dlp({
+            'status': 'downloading',
+            'downloaded_bytes': 50,
+        })
+
+        self.assertEqual(progress['downloaded_bytes'], 50)
+        self.assertEqual(progress['total_bytes'], 0)
+        self.assertIsNone(progress['percent'])
 
     @patch.dict(
         os.environ,

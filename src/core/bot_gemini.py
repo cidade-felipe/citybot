@@ -37,8 +37,8 @@ class CityBotGemini:
     def carrega_site(self, url):
         return carrega_site(url)
         
-    def carrega_video(self, url):
-        return carrega_video(url)
+    def carrega_video(self, url, progress_callback=None):
+        return carrega_video(url, progress_callback=progress_callback)
         
     def carrega_pdf(self, path):
         return carrega_pdf(path)

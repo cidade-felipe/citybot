@@ -61,8 +61,8 @@ class CityBotAzureOpenAI:
     def carrega_site(self, url):
         return carrega_site(url)
 
-    def carrega_video(self, url):
-        return carrega_video(url)
+    def carrega_video(self, url, progress_callback=None):
+        return carrega_video(url, progress_callback=progress_callback)
 
     def carrega_pdf(self, path):
         return carrega_pdf(path)
@@ -120,23 +120,23 @@ class CityBotAzureOpenAI:
     def _monta_prompt(self, mensagens, documento=''):
         linhas = [
             'Voce e um assistente amigavel chamado CityBot.',
-            'Responda de forma clara, util e direta, porém amigável. Seja conciso, mas completo. Evite respostas vagas ou genéricas.',
+            'Responda de forma clara, útil e direta, porém amigável. Seja conciso, mas completo. Evite respostas vagas ou genéricas.',
         ]
 
         if documento:
             linhas.extend([
                 '',
                 'Use as informacoes abaixo como contexto principal quando elas forem relevantes.',
-                'Se o contexto nao tiver a resposta, diga isso com clareza.',
+                'Se o contexto não tiver a resposta, diga isso com clareza.',
                 '',
                 'Contexto carregado:',
                 documento,
             ])
 
         if mensagens:
-            linhas.extend(['', 'Historico da conversa:'])
+            linhas.extend(['', 'Histórico da conversa:'])
             for tipo, conteudo in mensagens:
-                papel = 'Usuario' if tipo in ['user', 'human'] else 'Assistente'
+                papel = 'Usuário' if tipo in ['user', 'human'] else 'Assistente'
                 linhas.append(f'{papel}: {conteudo}')
 
         return '\n'.join(linhas)
@@ -150,9 +150,7 @@ class CityBotAzureOpenAI:
         dados_banco = self.load_conversations()
         mensagens = []
         for user_msg, bot_msg in dados_banco:
-            mensagens.append(('user', user_msg))
-            mensagens.append(('assistant', bot_msg))
-
+            mensagens.extend((('user', user_msg), ('assistant', bot_msg)))
         while True:
             opcao = input('\nEscolha uma opção: ')
 
@@ -194,10 +192,10 @@ class CityBotAzureOpenAI:
                     entrada_manual = []
                     while True:
                         linha = input()
-                        if linha == '' and not entrada_manual:
-                            pergunta = paste
-                            break
-                        if linha == '' and entrada_manual:
+                        if linha == '':
+                            if not entrada_manual:
+                                pergunta = paste
+                                break
                             pergunta = '\n'.join(entrada_manual)
                             break
                         entrada_manual.append(linha)

@@ -833,6 +833,8 @@ Fato: opcoes de fonte na sidebar:
 - Carregar PDF.
 - OCR Imagem.
 - Baixar Texto OCR apos carregar uma imagem com OCR.
+- Barra de progresso no rodape da GUI durante download de audio do YouTube para fallback local.
+- Conteudos extraidos podem carregar metadado `source_title`; a GUI usa esse titulo no contexto atual e no card de carregamento quando disponivel, evitando mostrar apenas a URL do video.
 - Limpar Conversa.
 
 Fato: a GUI usa `threading.Thread(..., daemon=True)` para processar mensagens e carregamentos externos.

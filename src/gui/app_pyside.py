@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -30,6 +31,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 class WorkerSignals(QObject):
     finished = Signal(object)
     failed = Signal(str)
+    progress = Signal(object)
 
 
 class ModernCityBotGUI(QMainWindow):
@@ -169,6 +171,18 @@ class ModernCityBotGUI(QMainWindow):
             background: {self.colors['bg_tertiary']};
             border: 0;
         }}
+        QProgressBar {{
+            color: {self.colors['text_primary']};
+            background: {self.colors['bg_tertiary']};
+            border: 1px solid {self.colors['border']};
+            border-radius: 6px;
+            height: 18px;
+            text-align: center;
+        }}
+        QProgressBar::chunk {{
+            background: {self.colors['accent']};
+            border-radius: 5px;
+        }}
         QScrollArea {{
             border: 0;
             background: {self.colors['bg_primary']};
@@ -222,10 +236,10 @@ class ModernCityBotGUI(QMainWindow):
 
         actions = [
             ('💬  Chat Livre', self.set_chat_mode, ''),
-            ('🌐  Carregar Site', self.load_website, ''),
-            ('📹  Carregar Vídeo', self.load_video, ''),
-            ('📄  Carregar PDF', self.load_pdf, ''),
-            ('🖼️  OCR Imagem', self.load_image_ocr, ''),
+            ('🌐  Analisar Site', self.load_website, ''),
+            ('📹  Analisar Vídeo do YouTube', self.load_video, ''),
+            ('📄  Analisar PDF', self.load_pdf, ''),
+            ('🖼️  Analisar Texto de Imagem', self.load_image_ocr, ''),
         ]
         for text, callback, variant in actions:
             layout.addWidget(self._button(text, callback, variant))
@@ -321,9 +335,26 @@ class ModernCityBotGUI(QMainWindow):
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(24, 8, 24, 8)
 
+        status_stack = QWidget()
+        status_stack.setFixedWidth(272)
+        status_layout = QVBoxLayout(status_stack)
+        status_layout.setContentsMargins(0, 0, 0, 0)
+        status_layout.setSpacing(4)
+
+        self.download_progress = QProgressBar()
+        self.download_progress.setFixedWidth(248)
+        self.download_progress.setRange(0, 100)
+        self.download_progress.setValue(0)
+        self.download_progress.setFormat('Baixando áudio: 0%')
+        self._set_download_progress_color(0)
+        self.download_progress.hide()
+        status_layout.addWidget(self.download_progress)
+
         self.status_label = QLabel('●  Pronto')
         self.status_label.setStyleSheet(f"color: {self.colors['success']};")
-        layout.addWidget(self.status_label)
+        status_layout.addWidget(self.status_label)
+
+        layout.addWidget(status_stack)
         layout.addStretch(1)
 
         hint = QLabel('Enter envia, Shift+Enter quebra linha')
@@ -477,6 +508,7 @@ class ModernCityBotGUI(QMainWindow):
         self.set_status('●  Pronto', 'success')
 
     def show_error(self, error_message):
+        self._hide_download_progress()
         self.add_message_bubble(f'Erro: {error_message}', is_user=False)
         self.is_processing = False
         self.set_status('●  Erro', 'error')
@@ -503,7 +535,18 @@ class ModernCityBotGUI(QMainWindow):
         url, ok = QInputDialog.getText(self, 'Carregar Vídeo', 'Digite a URL do YouTube:')
         if ok and url.strip():
             self._clear_ocr_export()
-            self._load_context('Vídeo', url.strip(), lambda: self.bot.carrega_video(url.strip()), url.strip())
+            self._hide_download_progress()
+            self._load_context(
+                'Vídeo',
+                url.strip(),
+                lambda progress_callback: self.bot.carrega_video(
+                    url.strip(),
+                    progress_callback=progress_callback,
+                ),
+                url.strip(),
+                on_progress=self._update_download_progress,
+                pass_progress=True,
+            )
 
     def load_pdf(self):
         filename, _ = QFileDialog.getOpenFileName(self, 'Selecionar PDF', '', 'PDF files (*.pdf);;All files (*.*)')
@@ -566,7 +609,16 @@ class ModernCityBotGUI(QMainWindow):
         if hasattr(self, 'download_ocr_button'):
             self.download_ocr_button.setEnabled(False)
 
-    def _load_context(self, source_type, source_ref, loader, display_name, after_success=None):
+    def _load_context(
+        self,
+        source_type,
+        source_ref,
+        loader,
+        display_name,
+        after_success=None,
+        on_progress=None,
+        pass_progress=False,
+    ):
         self.set_status(f'●  Carregando {source_type.lower()}...', 'warning')
 
         def on_success(content):
@@ -575,13 +627,19 @@ class ModernCityBotGUI(QMainWindow):
             except ValueError as error:
                 self.show_error(str(error))
                 return
-            self.context_label.setText(f'{source_type}: {display_name}')
+            resolved_display_name = self._context_display_name(content, display_name)
+            self.context_label.setText(f'{source_type}: {resolved_display_name}')
             if after_success:
                 after_success(content)
-            self.add_system_message(f'{source_type} carregado', f'Agora você pode fazer perguntas sobre: {display_name}')
+            self.add_system_message(f'{source_type} carregado', f'Agora você pode fazer perguntas sobre: {resolved_display_name}')
+            self._hide_download_progress()
             self.set_status('●  Pronto', 'success')
 
-        self._run_task(loader, on_success)
+        self._run_task(loader, on_success, on_progress=on_progress, pass_progress=pass_progress)
+
+    def _context_display_name(self, content, fallback):
+        source_title = str(getattr(content, 'source_title', '') or '').strip()
+        return source_title or fallback
 
     def clear_chat(self):
         if self.is_processing:
@@ -606,7 +664,82 @@ class ModernCityBotGUI(QMainWindow):
         self.context_label.setText('Chat Livre')
         self.add_system_message('Conversa limpa', 'O histórico foi apagado. Comece uma nova conversa.')
 
-    def _run_task(self, task, on_success):
+    def _show_download_progress(self):
+        if not hasattr(self, 'download_progress'):
+            return
+        self.download_progress.setRange(0, 100)
+        self.download_progress.setValue(0)
+        self.download_progress.setFormat('Baixando áudio: 0%')
+        self._set_download_progress_color(0)
+        self.download_progress.show()
+
+    def _hide_download_progress(self):
+        if hasattr(self, 'download_progress'):
+            self.download_progress.hide()
+
+    def _update_download_progress(self, progress):
+        if not hasattr(self, 'download_progress'):
+            return
+
+        status = progress.get('status', '')
+        percent = progress.get('percent')
+        if status == 'downloading':
+            if percent is None:
+                self.download_progress.setRange(0, 0)
+                self.download_progress.setFormat('Baixando áudio...')
+                self._set_download_progress_color(50)
+                self.download_progress.show()
+                return
+
+            value = int(percent)
+            self.download_progress.setRange(0, 100)
+            self.download_progress.setValue(value)
+            self.download_progress.setFormat(f'Baixando áudio: {value}%')
+            self._set_download_progress_color(value)
+            self.download_progress.show()
+            return
+
+        if status == 'finished':
+            self.download_progress.setRange(0, 100)
+            self.download_progress.setValue(100)
+            self.download_progress.setFormat('Áudio baixado')
+            self._set_download_progress_color(100)
+            self.download_progress.show()
+
+    def _set_download_progress_color(self, percent):
+        if not hasattr(self, 'download_progress'):
+            return
+
+        color = self._download_progress_color(percent)
+        self.download_progress.setStyleSheet(f"""
+        QProgressBar::chunk {{
+            background: {color};
+            border-radius: 5px;
+        }}
+        """)
+
+    def _download_progress_color(self, percent):
+        value = max(0, min(100, float(percent or 0)))
+        red = '#fb7185'
+        yellow = '#fbbf24'
+        green = '#38d9a9'
+
+        if value <= 50:
+            return self._interpolate_hex_color(red, yellow, value / 50)
+        return self._interpolate_hex_color(yellow, green, (value - 50) / 50)
+
+    @staticmethod
+    def _interpolate_hex_color(start, end, ratio):
+        ratio = max(0, min(1, ratio))
+        start_rgb = tuple(int(start[index:index + 2], 16) for index in (1, 3, 5))
+        end_rgb = tuple(int(end[index:index + 2], 16) for index in (1, 3, 5))
+        mixed = tuple(
+            round(start_value + (end_value - start_value) * ratio)
+            for start_value, end_value in zip(start_rgb, end_rgb)
+        )
+        return '#{:02x}{:02x}{:02x}'.format(*mixed)
+
+    def _run_task(self, task, on_success, on_progress=None, pass_progress=False):
         signals = WorkerSignals()
         self._worker_signals.append(signals)
 
@@ -620,10 +753,15 @@ class ModernCityBotGUI(QMainWindow):
 
         signals.finished.connect(finish)
         signals.failed.connect(fail)
+        if on_progress:
+            signals.progress.connect(on_progress)
 
         def run():
             try:
-                signals.finished.emit(task())
+                if pass_progress:
+                    signals.finished.emit(task(signals.progress.emit))
+                else:
+                    signals.finished.emit(task())
             except Exception as error:
                 signals.failed.emit(str(error))
 

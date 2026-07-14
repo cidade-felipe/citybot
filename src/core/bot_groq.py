@@ -37,8 +37,8 @@ class CityBotGroq:
     def carrega_site(self, url_site):
         return carrega_site(url_site)
 
-    def carrega_video(self, url_video):
-        return carrega_video(url_video)
+    def carrega_video(self, url_video, progress_callback=None):
+        return carrega_video(url_video, progress_callback=progress_callback)
 
     def carrega_pdf(self, caminho):
         return carrega_pdf(caminho)

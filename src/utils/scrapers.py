@@ -29,7 +29,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 REQUEST_TIMEOUT_SECONDS = 15
-VIDEO_LANGUAGES = ['pt', 'pt-BR', 'en']
+VIDEO_LANGUAGES = ['pt', 'pt-BR', 'en', 'en-US', 'es', 'fr', 'de', 'it', 'ja', 'ko', 'zh', 'ru']
 CAPTION_SOURCE_KEYS = ('subtitles', 'automatic_captions')
 CAPTION_FORMAT_PRIORITY = ('json3', 'vtt', 'srv3', 'ttml')
 YOUTUBE_COOKIES_BROWSER_ENV = 'CITYBOT_YOUTUBE_COOKIES_BROWSER'
@@ -69,9 +69,10 @@ DEFAULT_WHISPER_MAX_AUDIO_SECONDS = 7200
 
 
 class ExtractedContent(str):
-    def __new__(cls, value, error_message=''):
+    def __new__(cls, value, error_message='', source_title=''):
         obj = super().__new__(cls, value)
         obj.error_message = error_message
+        obj.source_title = source_title
         return obj
 
 
@@ -116,7 +117,7 @@ def _extrai_video_id(url_video):
     return ''
 
 
-def carrega_video(url_video):
+def carrega_video(url_video, progress_callback=None):
     video_id = _extrai_video_id(url_video)
 
     if not video_id:
@@ -124,22 +125,19 @@ def carrega_video(url_video):
         logger.warning(message)
         return ExtractedContent('', message)
 
-    errors = []
     transcript_text, transcript_error = _carrega_transcricao_youtube(video_id)
     if transcript_text:
-        return transcript_text
-    errors.append(transcript_error)
-
+        return ExtractedContent(transcript_text, source_title=_extract_video_title(url_video))
+    errors = [transcript_error]
     caption_text, caption_error = _carrega_legendas_yt_dlp(url_video)
     if caption_text:
         return caption_text
     errors.append(caption_error)
 
-    audio_text, audio_error = _transcreve_audio_youtube(url_video)
+    audio_text, audio_error = _transcreve_audio_youtube(url_video, progress_callback=progress_callback)
     if audio_text:
-        return audio_text
+        return ExtractedContent(audio_text, source_title=_extract_video_title(url_video))
     errors.append(audio_error)
-
     return ExtractedContent('', _mensagem_erro_video(errors))
 
 
@@ -189,7 +187,7 @@ def _tenta_carregar_legendas_yt_dlp(url_video, use_browser_cookies):
             content = _baixa_legenda_yt_dlp(ydl, caption)
             text = _extrai_texto_legenda(content, caption.get('ext', ''))
             if text:
-                return text, ''
+                return ExtractedContent(text, source_title=_video_title(video_info or {})), ''
             message = 'A legenda encontrada foi baixada, mas não continha texto legível.'
             logger.warning(message)
             return '', message
@@ -204,7 +202,7 @@ def _baixa_legenda_yt_dlp(ydl, caption):
     return response.read().decode('utf-8', errors='replace')
 
 
-def _transcreve_audio_youtube(url_video):
+def _transcreve_audio_youtube(url_video, progress_callback=None):
     if YoutubeDL is None:
         message = 'yt-dlp não está instalado. Execute pip install -r requirements.txt.'
         logger.warning(message)
@@ -217,7 +215,7 @@ def _transcreve_audio_youtube(url_video):
     try:
         with tempfile.TemporaryDirectory(prefix='citybot_youtube_audio_') as temp_dir:
             try:
-                audio_path = _baixa_audio_yt_dlp(url_video, temp_dir)
+                audio_path = _baixa_audio_yt_dlp(url_video, temp_dir, progress_callback=progress_callback)
             except Exception as e:
                 message = f'Não foi possível baixar o áudio do vídeo para transcrição local: {e}'
                 logger.error(message)
@@ -241,31 +239,46 @@ def _transcreve_audio_youtube(url_video):
         return '', message
 
 
-def _baixa_audio_yt_dlp(url_video, output_dir):
+def _baixa_audio_yt_dlp(url_video, output_dir, progress_callback=None):
     try:
-        return _tenta_baixar_audio_yt_dlp(url_video, output_dir, use_browser_cookies=True)
+        return _tenta_baixar_audio_yt_dlp(
+            url_video,
+            output_dir,
+            use_browser_cookies=True,
+            progress_callback=progress_callback,
+        )
     except Exception as e:
         if not _deve_tentar_sem_cookies_do_navegador(str(e)):
             raise
 
         logger.warning('Falha ao usar cookies do navegador no download de áudio. Tentando novamente sem cookies do navegador.')
         try:
-            return _tenta_baixar_audio_yt_dlp(url_video, output_dir, use_browser_cookies=False)
+            return _tenta_baixar_audio_yt_dlp(
+                url_video,
+                output_dir,
+                use_browser_cookies=False,
+                progress_callback=progress_callback,
+            )
         except Exception as retry_error:
             raise RuntimeError(
                 f'{e} | Tentativa sem cookies do navegador: {retry_error}'
             ) from retry_error
 
 
-def _tenta_baixar_audio_yt_dlp(url_video, output_dir, use_browser_cookies):
+def _tenta_baixar_audio_yt_dlp(url_video, output_dir, use_browser_cookies, progress_callback=None):
     output_path = Path(output_dir)
-    options = _audio_yt_dlp_options(output_path, use_browser_cookies=use_browser_cookies)
+    options = _audio_yt_dlp_options(
+        output_path,
+        use_browser_cookies=use_browser_cookies,
+        progress_callback=progress_callback,
+    )
 
     with YoutubeDL(options) as ydl:
         before_download = set(output_path.iterdir())
         result = ydl.download([url_video])
         if result:
             raise RuntimeError(f'yt-dlp retornou código {result} ao baixar áudio.')
+
 
     downloaded_files = [
         path
@@ -280,7 +293,7 @@ def _tenta_baixar_audio_yt_dlp(url_video, output_dir, use_browser_cookies):
     return max(downloaded_files, key=lambda path: path.stat().st_size)
 
 
-def _audio_yt_dlp_options(output_path, use_browser_cookies=True):
+def _audio_yt_dlp_options(output_path, use_browser_cookies=True, progress_callback=None):
     options = _yt_dlp_options(use_browser_cookies=use_browser_cookies)
     options.update({
         'format': 'bestaudio/best',
@@ -288,7 +301,33 @@ def _audio_yt_dlp_options(output_path, use_browser_cookies=True):
         'skip_download': False,
         'match_filter': _filtro_duracao_audio,
     })
+    if progress_callback:
+        options['progress_hooks'] = [_yt_dlp_progress_hook(progress_callback)]
     return options
+
+
+def _yt_dlp_progress_hook(progress_callback):
+    def hook(data):
+        progress_callback(_normaliza_progresso_yt_dlp(data))
+
+    return hook
+
+
+def _normaliza_progresso_yt_dlp(data):
+    total_bytes = data.get('total_bytes') or data.get('total_bytes_estimate') or 0
+    downloaded_bytes = data.get('downloaded_bytes') or 0
+    percent = None
+    if total_bytes:
+        percent = min(100, max(0, downloaded_bytes * 100 / total_bytes))
+
+    return {
+        'status': data.get('status', ''),
+        'downloaded_bytes': downloaded_bytes,
+        'total_bytes': total_bytes,
+        'percent': percent,
+        'speed': data.get('speed') or 0,
+        'eta': data.get('eta'),
+    }
 
 
 def _filtro_duracao_audio(video_info, incomplete=False):
@@ -379,9 +418,7 @@ def _cookies_from_browser():
         return None
 
     profile = os.getenv(YOUTUBE_COOKIES_PROFILE_ENV, '').strip()
-    if profile:
-        return (browser, profile)
-    return (browser,)
+    return (browser, profile) if profile else (browser, )
 
 
 def _seleciona_legenda(video_info):
@@ -438,11 +475,7 @@ def _seleciona_formato_legenda(captions):
             if caption.get('url') and (caption.get('ext') or '').lower() == extension:
                 return caption
 
-    for caption in captions:
-        if caption.get('url'):
-            return caption
-
-    return None
+    return next((caption for caption in captions if caption.get('url')), None)
 
 
 def _mensagem_erro_video(errors):
@@ -481,6 +514,37 @@ def _is_audio_download_failure(message):
         'não foi possível baixar o áudio do vídeo' in lowered_message
         or 'yt-dlp não gerou arquivo de áudio' in lowered_message
     )
+
+
+def _extract_video_title(url_video):
+    if YoutubeDL is None:
+        return ''
+
+    try:
+        with YoutubeDL(_yt_dlp_options(use_browser_cookies=True)) as ydl:
+            video_info = ydl.extract_info(url_video, download=False)
+            return _video_title(video_info or {})
+    except Exception as e:
+        if _deve_tentar_sem_cookies_do_navegador(str(e)):
+            logger.warning('Falha ao usar cookies do navegador para buscar título. Tentando novamente sem cookies do navegador.')
+            return _extract_video_title_without_browser_cookies(url_video)
+
+        logger.warning('Falha ao extrair título do vídeo com yt-dlp: %s', e)
+        return ''
+
+
+def _extract_video_title_without_browser_cookies(url_video):
+    try:
+        with YoutubeDL(_yt_dlp_options(use_browser_cookies=False)) as ydl:
+            video_info = ydl.extract_info(url_video, download=False)
+            return _video_title(video_info or {})
+    except Exception as e:
+        logger.warning('Falha ao extrair título do vídeo sem cookies do navegador: %s', e)
+        return ''
+
+
+def _video_title(video_info):
+    return str(video_info.get('title') or '').strip()
 
 
 def _is_youtube_rate_limit(message):
