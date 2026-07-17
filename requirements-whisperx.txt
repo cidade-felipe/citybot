@@ -1,0 +1,5 @@
+# Dependências opcionais para usar WhisperX no fallback local de vídeos.
+# O Groq/LangChain foi removido do projeto para evitar conflito com numpy>=2.
+# Instale com: pip install -r requirements-whisperx.txt
+-r requirements.txt
+whisperx==3.8.6

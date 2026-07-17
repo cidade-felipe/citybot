@@ -1,4 +1,5 @@
 import html
+import importlib
 import json
 import logging
 import os
@@ -25,6 +26,8 @@ try:
     from faster_whisper import WhisperModel
 except ImportError:
     WhisperModel = None
+
+whisperx = None
 
 
 logger = logging.getLogger(__name__)
@@ -58,13 +61,18 @@ YOUTUBE_AUDIO_DOWNLOAD_HINT = (
     'cookies inválidos ou falha de conexão.'
 )
 WHISPER_MODEL_ENV = 'CITYBOT_WHISPER_MODEL'
+WHISPER_ENGINE_ENV = 'CITYBOT_WHISPER_ENGINE'
 WHISPER_DEVICE_ENV = 'CITYBOT_WHISPER_DEVICE'
 WHISPER_COMPUTE_TYPE_ENV = 'CITYBOT_WHISPER_COMPUTE_TYPE'
 WHISPER_LANGUAGE_ENV = 'CITYBOT_WHISPER_LANGUAGE'
+WHISPER_BATCH_SIZE_ENV = 'CITYBOT_WHISPER_BATCH_SIZE'
+WHISPERX_ALIGN_ENV = 'CITYBOT_WHISPERX_ALIGN'
 WHISPER_MAX_AUDIO_SECONDS_ENV = 'CITYBOT_WHISPER_MAX_AUDIO_SECONDS'
 DEFAULT_WHISPER_MODEL = 'base'
+DEFAULT_WHISPER_ENGINE = 'auto'
 DEFAULT_WHISPER_DEVICE = 'cpu'
 DEFAULT_WHISPER_COMPUTE_TYPE = 'int8'
+DEFAULT_WHISPER_BATCH_SIZE = 8
 DEFAULT_WHISPER_MAX_AUDIO_SECONDS = 7200
 
 
@@ -207,8 +215,10 @@ def _transcreve_audio_youtube(url_video, progress_callback=None):
         message = 'yt-dlp não está instalado. Execute pip install -r requirements.txt.'
         logger.warning(message)
         return '', message
-    if WhisperModel is None:
-        message = 'faster-whisper não está instalado. Execute pip install -r requirements.txt.'
+
+    engines = _whisper_engines()
+    if not engines:
+        message = _missing_whisper_engine_message()
         logger.warning(message)
         return '', message
 
@@ -221,10 +231,9 @@ def _transcreve_audio_youtube(url_video, progress_callback=None):
                 logger.error(message)
                 return '', message
 
-            try:
-                text = _transcreve_audio_whisper(audio_path)
-            except Exception as e:
-                message = f'O áudio foi baixado, mas não foi possível transcrever com faster-whisper: {e}'
+            text, transcription_error = _transcreve_audio_local(audio_path, engines)
+            if transcription_error:
+                message = f'O áudio foi baixado, mas não foi possível transcrever localmente: {transcription_error}'
                 logger.error(message)
                 return '', message
 
@@ -234,7 +243,7 @@ def _transcreve_audio_youtube(url_video, progress_callback=None):
             logger.warning(message)
             return '', message
     except Exception as e:
-        message = f'Erro ao transcrever áudio do vídeo com faster-whisper: {e}'
+        message = f'Erro ao transcrever áudio do vídeo localmente: {e}'
         logger.error(message)
         return '', message
 
@@ -357,6 +366,158 @@ def _valida_duracao_audio(video_info):
         )
 
 
+def _transcreve_audio_local(audio_path, engines):
+    errors = []
+    for engine in engines:
+        try:
+            text = _transcreve_audio_por_engine(audio_path, engine)
+        except Exception as e:
+            logger.warning('Falha ao transcrever áudio com %s: %s', engine, e)
+            errors.append(f'{engine}: {e}')
+            continue
+
+        if text:
+            return text, ''
+        errors.append(f'{engine}: não encontrou fala legível')
+
+    return '', '; '.join(errors)
+
+
+def _transcreve_audio_por_engine(audio_path, engine):
+    if engine == 'whisperx':
+        return _transcreve_audio_whisperx(audio_path)
+    return _transcreve_audio_whisper(audio_path)
+
+
+def _whisper_engines():
+    engine = _whisper_engine()
+    if engine == 'whisperx':
+        return ['whisperx'] if _whisperx_available() else []
+    if engine == 'faster-whisper':
+        return ['faster-whisper'] if WhisperModel is not None else []
+
+    engines = []
+    if _whisperx_available():
+        engines.append('whisperx')
+    if WhisperModel is not None:
+        engines.append('faster-whisper')
+    return engines
+
+
+def _whisper_engine():
+    value = os.getenv(WHISPER_ENGINE_ENV, DEFAULT_WHISPER_ENGINE).strip().lower()
+    value = value.replace('_', '-')
+    aliases = {
+        'auto': 'auto',
+        'whisperx': 'whisperx',
+        'faster': 'faster-whisper',
+        'faster-whisper': 'faster-whisper',
+    }
+    if not value:
+        return DEFAULT_WHISPER_ENGINE
+    if value not in aliases:
+        logger.warning(
+            'Valor inválido para %s: %s. Usando auto.',
+            WHISPER_ENGINE_ENV,
+            value,
+        )
+        return DEFAULT_WHISPER_ENGINE
+    return aliases[value]
+
+
+def _missing_whisper_engine_message():
+    engine = _whisper_engine()
+    if engine == 'whisperx':
+        return (
+            'WhisperX não está instalado. Execute pip install -r requirements-whisperx.txt '
+            'ou use '
+            f'{WHISPER_ENGINE_ENV}=auto para permitir fallback com faster-whisper.'
+        )
+    if engine == 'faster-whisper':
+        return 'faster-whisper não está instalado. Execute pip install -r requirements.txt.'
+    return (
+        'Nenhum motor local de transcrição está instalado. Execute pip install -r requirements.txt '
+        'para usar faster-whisper ou pip install -r requirements-whisperx.txt para habilitar WhisperX.'
+    )
+
+
+def _whisperx_available():
+    return whisperx is not None or importlib.util.find_spec('whisperx') is not None
+
+
+def _load_whisperx():
+    global whisperx
+    if whisperx is None:
+        whisperx = importlib.import_module('whisperx')
+    return whisperx
+
+
+def _transcreve_audio_whisperx(audio_path):
+    whisperx_module = _load_whisperx()
+    model_name = os.getenv(WHISPER_MODEL_ENV, DEFAULT_WHISPER_MODEL).strip() or DEFAULT_WHISPER_MODEL
+    device = os.getenv(WHISPER_DEVICE_ENV, DEFAULT_WHISPER_DEVICE).strip() or DEFAULT_WHISPER_DEVICE
+    compute_type = os.getenv(WHISPER_COMPUTE_TYPE_ENV, DEFAULT_WHISPER_COMPUTE_TYPE).strip() or DEFAULT_WHISPER_COMPUTE_TYPE
+    language = os.getenv(WHISPER_LANGUAGE_ENV, '').strip() or None
+    batch_size = _env_int(WHISPER_BATCH_SIZE_ENV, DEFAULT_WHISPER_BATCH_SIZE)
+
+    model = whisperx_module.load_model(
+        model_name,
+        device=device,
+        compute_type=compute_type,
+        language=language,
+    )
+    audio = whisperx_module.load_audio(str(audio_path))
+    result = model.transcribe(audio, batch_size=batch_size)
+    if _env_bool(WHISPERX_ALIGN_ENV, False):
+        result = _align_whisperx_result(whisperx_module, result, audio, device)
+
+    return _normaliza_texto(_whisperx_segment_texts(result))
+
+
+def _align_whisperx_result(whisperx_module, result, audio, device):
+    segments = _whisperx_segments(result)
+    language = _whisperx_language(result)
+    if not segments or not language:
+        return result
+
+    try:
+        model, metadata = whisperx_module.load_align_model(
+            language_code=language,
+            device=device,
+        )
+        return whisperx_module.align(
+            segments,
+            model,
+            metadata,
+            audio,
+            device,
+            return_char_alignments=False,
+        )
+    except Exception as e:
+        logger.warning('Não foi possível alinhar a transcrição com WhisperX: %s', e)
+        return result
+
+
+def _whisperx_segments(result):
+    if isinstance(result, dict):
+        return result.get('segments') or []
+    return getattr(result, 'segments', []) or []
+
+
+def _whisperx_segment_texts(result):
+    for segment in _whisperx_segments(result):
+        if isinstance(segment, dict):
+            yield segment.get('text', '')
+        else:
+            yield getattr(segment, 'text', '')
+
+
+def _whisperx_language(result):
+    if isinstance(result, dict):
+        return str(result.get('language') or '').strip()
+    return str(getattr(result, 'language', '') or '').strip()
+
+
 def _transcreve_audio_whisper(audio_path):
     model = WhisperModel(
         os.getenv(WHISPER_MODEL_ENV, DEFAULT_WHISPER_MODEL).strip() or DEFAULT_WHISPER_MODEL,
@@ -381,6 +542,17 @@ def _env_int(name, default):
         return int(value)
     except ValueError:
         return default
+
+
+def _env_bool(name, default=False):
+    value = os.getenv(name, '').strip().lower()
+    if not value:
+        return default
+    if value in {'1', 'true', 'yes', 'sim', 's', 'on'}:
+        return True
+    if value in {'0', 'false', 'no', 'nao', 'não', 'n', 'off'}:
+        return False
+    return default
 
 
 def _yt_dlp_options(use_browser_cookies=True):

@@ -6,11 +6,10 @@ from unittest.mock import Mock, call, patch
 from PySide6.QtWidgets import QMessageBox
 from src.gui.app_azure_openai import ModernCityBotGUI as AzureGUI
 from src.gui.app_gemini import ModernCityBotGUI as GeminiGUI
-from src.gui.app_groq import ModernCityBotGUI as GroqGUI
 from src.utils.scrapers import ExtractedContent
 
 
-GUI_CLASSES = (GeminiGUI, GroqGUI, AzureGUI)
+GUI_CLASSES = (GeminiGUI, AzureGUI)
 
 
 class GuiHistoryTest(unittest.TestCase):

@@ -18,9 +18,7 @@ def run_gui(provider):
         bot_factory = CityBotAzureOpenAI
         title = 'CityBot Azure OpenAI - Assistente Inteligente'
     else:
-        from src.core.bot_groq import CityBotGroq
-        bot_factory = CityBotGroq
-        title = 'CityBot Groq - Assistente Inteligente'
+        raise ValueError(f'Provedor não suportado: {provider}')
 
     app = QApplication.instance() or QApplication(sys.argv)
     window = ModernCityBotGUI(bot_factory=bot_factory, title=title)
@@ -35,14 +33,13 @@ def run_cli(provider):
         from src.core.bot_azure_openai import CityBotAzureOpenAI
         bot = CityBotAzureOpenAI()
     else:
-        from src.core.bot_groq import CityBotGroq
-        bot = CityBotGroq()
+        raise ValueError(f'Provedor não suportado: {provider}')
     bot.menu()
 
 def main():
     parser = argparse.ArgumentParser(description="CityBot - Assistente Inteligente Multinível")
-    parser.add_argument('--provider', type=str, choices=['groq', 'gemini', 'azure_openai'], default='azure_openai',
-                        help="Escolha o provedor de IA (groq, gemini ou azure_openai). Padrão: azure_openai")
+    parser.add_argument('--provider', type=str, choices=['gemini', 'azure_openai'], default='azure_openai',
+                        help="Escolha o provedor de IA (gemini ou azure_openai). Padrão: azure_openai")
     parser.add_argument('--mode', type=str, choices=['gui', 'cli'], default='gui',
                         help="Escolha o modo de execução (gui ou cli). Padrão: gui")
 

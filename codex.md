@@ -2,7 +2,7 @@
 
 Arquivo criado em 03/06/2026.
 
-Ultima atualizacao documentada: 13/07/2026, apos migracao da GUI ativa de Tkinter/ttk para PySide6, padronizacao de caminhos de dados e validacao explicita de configuracao nos providers Gemini e Groq.
+Ultima atualizacao documentada: 17/07/2026, apos remocao do provider Groq/LangChain para liberar a instalacao opcional do WhisperX com `numpy>=2`.
 
 Este documento foi criado para servir como memoria tecnica detalhada do projeto `citybot`. Ele deve ser atualizado sempre que houver alteracao relevante no codigo, dependencias, arquitetura, comportamento, dados, riscos conhecidos ou forma de execucao.
 
@@ -16,22 +16,20 @@ Importante: este arquivo separa explicitamente fato, inferencia e opiniao tecnic
 
 Fato: o CityBot e um assistente inteligente em Python que combina conversa com LLM, leitura de PDFs, leitura de paginas web, transcricao de videos do YouTube, OCR de imagens e persistencia de historico em SQLite.
 
-Fato: o projeto tem tres provedores de IA implementados:
+Fato: o projeto tem dois provedores de IA implementados:
 
 - Google Gemini, via pacote `google-genai`.
-- Groq, via `langchain-groq` e `ChatGroq`.
 - Azure OpenAI, via pacote `openai` e classe `AzureOpenAI`.
 
 Fato: o ponto de entrada ativo e `main.py`, que permite escolher:
 
-- Provedor: `gemini`, `groq` ou `azure_openai`.
+- Provedor: `gemini` ou `azure_openai`.
 - Modo: `gui` ou `cli`.
 
 Fato: a interface grafica ativa usa PySide6. A base visual fica em `src/gui/app_pyside.py`; os arquivos dos providers sao wrappers leves sobre essa base:
 
 - `src/gui/app_pyside.py`.
 - `src/gui/app_gemini.py`.
-- `src/gui/app_groq.py`.
 - `src/gui/app_azure_openai.py`.
 
 Inferencia: o projeto nasceu ou passou por uma fase de scripts monoliticos, depois foi refatorado para uma estrutura modular em `src/`. A pasta `testes/` contem scripts antigos ou experimentais. A suite automatizada ativa fica em `tests/`.
@@ -76,7 +74,6 @@ Fato: a validacao de sintaxe com `python -m py_compile` passou nos arquivos Pyth
 
 - `main.py`.
 - `src/core/database.py`.
-- `src/core/bot_groq.py`.
 - `src/core/bot_gemini.py`.
 - `src/core/bot_azure_openai.py`.
 - `src/utils/scrapers.py`.
@@ -84,7 +81,6 @@ Fato: a validacao de sintaxe com `python -m py_compile` passou nos arquivos Pyth
 - `src/utils/ocr.py`.
 - `src/utils/file_writer.py`.
 - `src/utils/paths.py`.
-- `src/gui/app_groq.py`.
 - `src/gui/app_gemini.py`.
 - `src/gui/app_azure_openai.py`.
 - `src/gui/app_pyside.py`.
@@ -99,6 +95,7 @@ citybot/
 ├── main.py
 ├── README.md
 ├── requirements.txt
+├── requirements-whisperx.txt
 ├── LICENSE
 ├── citybot.db
 ├── .env
@@ -115,12 +112,10 @@ citybot/
 └── src/
     ├── core/
     │   ├── database.py
-    │   ├── bot_groq.py
     │   ├── bot_gemini.py
     │   └── bot_azure_openai.py
     ├── gui/
     │   ├── app_pyside.py
-    │   ├── app_groq.py
     │   ├── app_gemini.py
     │   ├── app_azure_openai.py
     │   └── markdown_renderer.py
@@ -198,21 +193,19 @@ Comandos documentados pelo projeto:
 
 ```powershell
 python main.py
-python main.py --provider groq
 python main.py --provider azure_openai
 python main.py --mode cli
-python main.py --provider groq --mode cli
 python main.py --provider azure_openai --mode cli
 ```
 
 Fato: valores padrao em `main.py`:
 
-- `--provider` default: `gemini`.
+- `--provider` default: `azure_openai`.
 - `--mode` default: `gui`.
 
 Fato: `main.py` usa `argparse` e aceita somente:
 
-- Provider: `groq`, `gemini`, `azure_openai`.
+- Provider: `gemini`, `azure_openai`.
 - Mode: `gui`, `cli`.
 
 Opiniao tecnica: esse ponto de entrada e simples e bom para uso local. Para producao ou distribuicao, valeria separar configuracao de ambiente, logs e validacao de dependencias antes de abrir a GUI.
@@ -224,8 +217,6 @@ Fato: o codigo espera as seguintes variaveis:
 ```text
 GEMINI_API_KEY
 GEMINI_MODEL
-GROQ_API_KEY
-GROQ_API_MODEL
 AZURE_OPENAI_API_KEY
 AZURE_ENDPOINT
 AZURE_API_VERSION
@@ -234,16 +225,17 @@ AZURE_MAX_OUTPUT_TOKENS
 CITYBOT_YOUTUBE_COOKIES_BROWSER
 CITYBOT_YOUTUBE_COOKIES_PROFILE
 CITYBOT_YOUTUBE_COOKIES_FILE
+CITYBOT_WHISPER_ENGINE
 CITYBOT_WHISPER_MODEL
 CITYBOT_WHISPER_DEVICE
 CITYBOT_WHISPER_COMPUTE_TYPE
 CITYBOT_WHISPER_LANGUAGE
+CITYBOT_WHISPER_BATCH_SIZE
+CITYBOT_WHISPERX_ALIGN
 CITYBOT_WHISPER_MAX_AUDIO_SECONDS
 ```
 
 Fato: `CityBotGemini` le explicitamente `GEMINI_API_KEY` e `GEMINI_MODEL`.
-
-Fato: `CityBotGroq` le explicitamente `GROQ_API_KEY` e `GROQ_API_MODEL`.
 
 Fato: `CityBotAzureOpenAI` le explicitamente `AZURE_OPENAI_API_KEY`, `AZURE_ENDPOINT`, `AZURE_API_VERSION`, `AZURE_DEPLOYMENT` e opcionalmente `AZURE_MAX_OUTPUT_TOKENS`.
 
@@ -251,9 +243,11 @@ Fato: `CITYBOT_YOUTUBE_COOKIES_BROWSER`, `CITYBOT_YOUTUBE_COOKIES_PROFILE` e `CI
 
 Fato: `CITYBOT_YOUTUBE_COOKIES_FILE` tem prioridade sobre `CITYBOT_YOUTUBE_COOKIES_BROWSER`, porque evita acessar diretamente o banco de cookies vivo do Chrome/Edge.
 
-Fato: `CITYBOT_WHISPER_MODEL`, `CITYBOT_WHISPER_DEVICE`, `CITYBOT_WHISPER_COMPUTE_TYPE`, `CITYBOT_WHISPER_LANGUAGE` e `CITYBOT_WHISPER_MAX_AUDIO_SECONDS` sao opcionais e controlam o fallback local de transcricao de audio com `faster-whisper`.
+Fato: `CITYBOT_WHISPER_ENGINE`, `CITYBOT_WHISPER_MODEL`, `CITYBOT_WHISPER_DEVICE`, `CITYBOT_WHISPER_COMPUTE_TYPE`, `CITYBOT_WHISPER_LANGUAGE`, `CITYBOT_WHISPER_BATCH_SIZE`, `CITYBOT_WHISPERX_ALIGN` e `CITYBOT_WHISPER_MAX_AUDIO_SECONDS` sao opcionais e controlam o fallback local de transcricao de audio.
 
-Fato: em 13/07/2026, Gemini e Groq passaram a validar variaveis obrigatorias no construtor, guardar `config_error` e retornar erro claro em `resposta_bot` quando a configuracao esta incompleta.
+Fato: `CITYBOT_WHISPER_ENGINE=auto` e o padrao. Nesse modo, o CityBot tenta WhisperX primeiro quando o pacote opcional esta instalado; se nao estiver, continua usando `faster-whisper`. Tambem e possivel forcar `whisperx` ou `faster-whisper`.
+
+Fato: Gemini e Azure OpenAI validam variaveis obrigatorias no construtor, guardam `config_error` e retornam erro claro em `resposta_bot` quando a configuracao esta incompleta.
 
 Risco residual:
 
@@ -269,13 +263,12 @@ Dependencias principais:
 - `python-dotenv`: carrega `.env`.
 - `google-genai`: SDK do Gemini.
 - `openai`: SDK usado pelo provider Azure OpenAI com `AzureOpenAI`.
-- `langchain`: usado por Groq para prompt/memoria.
-- `langchain-groq`: cliente Groq via LangChain.
 - `requests`: leitura de paginas web.
 - `beautifulsoup4`: parse HTML.
 - `youtube-transcript-api`: transcricao do YouTube.
 - `yt-dlp`: fallback para metadados e URLs de legendas do YouTube.
 - `faster-whisper`: fallback local para transcricao de audio quando transcricao e legendas do YouTube falham.
+- `whisperx`: dependencia opcional em `requirements-whisperx.txt`, usada como primeiro motor local quando instalada e `CITYBOT_WHISPER_ENGINE=auto`.
 - `truststore`: validacao HTTPS usando certificados confiaveis do sistema operacional.
 - `pypdf`: leitura de PDF.
 - `opencv-python`: pre-processamento de imagem para OCR Tesseract.
@@ -291,6 +284,12 @@ Fato: `PySide6==6.11.1` foi adicionado ao `requirements.txt` em 13/07/2026. `tki
 Fato: `yt-dlp==2026.7.4` foi adicionado ao `requirements.txt` em 13/07/2026 como fallback para extracao de legendas do YouTube.
 
 Fato: `faster-whisper==1.2.1` foi adicionado ao `requirements.txt` em 13/07/2026 como fallback local de transcricao de audio para videos do YouTube.
+
+Fato: `requirements-whisperx.txt` foi adicionado em 17/07/2026 para instalar `whisperx==3.8.6` de forma opcional.
+
+Fato: em 17/07/2026, o provider Groq e as dependencias `langchain`, `langchain-groq` e `langchain-community` foram removidos porque conflitam com `whisperx==3.8.6`, que exige `numpy>=2.1.0`.
+
+Fato: ambientes virtuais criados antes dessa remocao podem manter pacotes Groq/LangChain instalados. Para limpar o ambiente local, use `python -m pip uninstall -y langchain langchain-groq langchain-community groq` antes de instalar o WhisperX opcional.
 
 Fato: o Tesseract OCR e dependencia externa do sistema, nao apenas pacote Python.
 
@@ -312,11 +311,9 @@ main.py
   ├── GUI PySide6
   │   ├── src/gui/app_pyside.py
   │   ├── src/gui/app_gemini.py
-  │   ├── src/gui/app_groq.py
   │   └── src/gui/app_azure_openai.py
   ├── Core de IA e persistencia
   │   ├── src/core/bot_gemini.py
-  │   ├── src/core/bot_groq.py
   │   ├── src/core/bot_azure_openai.py
   │   └── src/core/database.py
   └── Utilitarios de entrada/saida
@@ -333,7 +330,7 @@ Opiniao tecnica: a separacao `core`, `gui` e `utils` e boa. A duplicacao visual 
 Melhor caminho tecnico:
 
 - Manter a GUI unica recebendo uma instancia de bot ou uma factory de bot.
-- Manter `CityBotGemini` e `CityBotGroq` como adaptadores de provider.
+- Manter `CityBotGemini` e `CityBotAzureOpenAI` como adaptadores de provider.
 - Definir uma interface comum de bot, por exemplo `resposta_bot`, `carrega_site`, `carrega_video`, `carrega_pdf`, `carrega_imagem_ocr`, `save_conversation`.
 
 Trade-off:
@@ -362,7 +359,7 @@ Fato: desde 13/07/2026, `run_gui(provider)`:
 
 Fato: `run_cli(provider)`:
 
-- Instancia `CityBotGemini` ou `CityBotGroq`.
+- Instancia `CityBotGemini` ou `CityBotAzureOpenAI`.
 - Chama `bot.menu()`.
 
 Opiniao tecnica: o uso de import dentro das funcoes reduz carregamento desnecessario do provider nao escolhido. Isso e util quando uma dependencia ou chave de API pode estar ausente. Por outro lado, erros de import aparecem somente em tempo de execucao.
@@ -499,64 +496,7 @@ Risco real:
 - O contexto completo do documento e inserido diretamente na instrucao do sistema, sem chunking, sumarizacao ou controle de tamanho.
 - Se o documento for grande, pode haver alto custo, lentidao ou erro por limite de contexto.
 
-## 13. Provider Groq
-
-Arquivo: `src/core/bot_groq.py`.
-
-Fato: a classe principal e `CityBotGroq`.
-
-Fato: no construtor:
-
-- Chama `load_dotenv()`.
-- Le `GROQ_API_KEY`.
-- Le `GROQ_API_MODEL`.
-- Valida variaveis obrigatorias em `config_error`.
-- Cria `CityBotDatabase`.
-- Cria `ConversationBufferWindowMemory(k=1000000)`.
-
-Fato: `chat()` cria:
-
-```python
-ChatGroq(model=self.api_model)
-```
-
-Fato: `resposta_bot(mensagens, documento='')` cria uma mensagem de sistema:
-
-```text
-Você é um assistente amigável chamado CityBot, capaz de conversar sobre qualquer assunto, inclusive qualquer informação sobre {informacoes}.
-```
-
-Fato: o historico e convertido para lista de mensagens do `ChatPromptTemplate`.
-
-Fato: a chain e:
-
-```python
-template | self.chat()
-```
-
-Fato: a resposta final e:
-
-```python
-chain.invoke({'informacoes': informacoes}).content
-```
-
-Fato: o OCR na versao Groq chama Tesseract e, se houver texto, salva arquivos via `salvar_texto(texto_final, nome)`.
-
-Fato: se `GROQ_API_KEY` ou `GROQ_API_MODEL` estiverem ausentes, `resposta_bot` retorna texto no formato:
-
-```text
-Erro de configuracao Groq: ...
-```
-
-Risco real:
-
-- `ConversationBufferWindowMemory(k=1000000)` e um valor extremamente alto e pode manter historico demais em memoria.
-- A memoria LangChain e usada no CLI, mas o prompt enviado ao modelo tambem usa `mensagens`, entao ha potencial de redundancia conceitual.
-- O uso de contexto completo do documento tambem pode estourar limite de tokens.
-
-Opiniao tecnica: a validacao explicita reduziu erro operacional no inicio da conversa, mas o provider ainda precisa de testes mockados do caminho feliz e melhor controle de contexto.
-
-## 13.1 Provider Azure OpenAI
+## 13. Provider Azure OpenAI
 
 Arquivo: `src/core/bot_azure_openai.py`.
 
@@ -594,7 +534,7 @@ Fato: o prompt enviado ao Azure OpenAI e uma string unica, montada por `_monta_p
 
 Inferencia: a escolha por `input` textual foi feita para ficar alinhada ao exemplo recebido e reduzir risco de incompatibilidade com formatos mais complexos da Responses API.
 
-Fato: o OCR no provider Azure OpenAI usa Tesseract local e salva o texto via `salvar_texto`, igual ao fluxo Groq. Imagens nao sao enviadas ao Azure OpenAI nessa implementacao.
+Fato: o OCR no provider Azure OpenAI usa Tesseract local e salva o texto via `salvar_texto`. Imagens nao sao enviadas ao Azure OpenAI nessa implementacao.
 
 Opiniao tecnica: essa decisao e conservadora e boa para privacidade, porque o exemplo recebido cobre texto, nao imagem. Caso seja desejado OCR multimodal via Azure no futuro, isso deve ser tratado como nova decisao de produto por envolver custo, privacidade e suporte do deployment.
 
@@ -628,8 +568,10 @@ Fato: `carrega_video(url_video)`:
 - Tenta primeiro `YouTubeTranscriptApi().fetch(video_id, languages=['pt', 'pt-BR', 'en'])`, compativel com a versao `1.2.4` fixada.
 - Se a transcricao direta falhar ou vier vazia, usa `yt-dlp` para buscar metadados do video e selecionar legendas oficiais ou automaticas.
 - O fallback via `yt-dlp` prioriza legendas em portugues e ingles, baixa somente o arquivo de legenda pela propria camada de rede do `yt-dlp` e extrai texto de formatos como `json3`, `vtt`, `srv3` e `ttml`.
-- Se transcricao e legendas falharem, baixa temporariamente apenas o audio com `yt-dlp` e transcreve localmente com `faster-whisper`.
-- O fallback de audio usa `CITYBOT_WHISPER_MODEL=base`, `CITYBOT_WHISPER_DEVICE=cpu`, `CITYBOT_WHISPER_COMPUTE_TYPE=int8` e limite de 7200 segundos por padrao; transmissoes ainda ao vivo sao recusadas ate terminarem.
+- Se transcricao e legendas falharem, baixa temporariamente apenas o audio com `yt-dlp` e transcreve localmente com WhisperX opcional ou `faster-whisper`.
+- O fallback de audio usa `CITYBOT_WHISPER_ENGINE=auto`, `CITYBOT_WHISPER_MODEL=base`, `CITYBOT_WHISPER_DEVICE=cpu`, `CITYBOT_WHISPER_COMPUTE_TYPE=int8`, `CITYBOT_WHISPER_BATCH_SIZE=8` e limite de 7200 segundos por padrao; transmissoes ainda ao vivo sao recusadas ate terminarem.
+- Quando `CITYBOT_WHISPER_ENGINE=auto`, o WhisperX e tentado primeiro se estiver instalado; se nao estiver disponivel ou falhar, `faster-whisper` continua funcionando como fallback.
+- `CITYBOT_WHISPERX_ALIGN=true` ativa alinhamento no WhisperX, mas pode baixar modelos extras e aumentar o tempo de processamento.
 - Quando o YouTube retorna `HTTP 429 Too Many Requests`, a GUI exibe uma mensagem especifica sugerindo configurar `CITYBOT_YOUTUBE_COOKIES_BROWSER`; se o fallback local tambem nao conseguir baixar o audio, a mensagem informa essa falha adicional.
 - Quando o `yt-dlp` nao consegue copiar ou descriptografar cookies do Chrome/Edge, o fallback tenta novamente sem cookies do navegador; se a requisicao anonima tambem falhar, a GUI exibe uma mensagem especifica sugerindo fechar o navegador ou usar `CITYBOT_YOUTUBE_COOKIES_FILE`.
 - Quando `CITYBOT_YOUTUBE_COOKIES_FILE` aponta para arquivo fora do formato Netscape cookies.txt, a GUI exibe uma mensagem especifica explicando que JSON, HTML ou SQLite nao funcionam.
@@ -651,7 +593,7 @@ Risco real em YouTube:
 - Usar cookies do navegador melhora alguns casos de bloqueio, mas depende do estado local do navegador e pode falhar se o perfil estiver bloqueado, deslogado ou indisponivel.
 - Em Windows, Chrome/Edge podem bloquear o arquivo `Network/Cookies` enquanto estao abertos. Nesses casos, fechar totalmente o navegador ou usar um arquivo `cookies.txt` exportado e mais robusto.
 - Arquivos de cookies exportados sao sensiveis e ficam ignorados pelo Git por padroes como `cookies.txt`, `youtube_cookies.txt`, `*_cookies.txt` e `*.cookies.txt`.
-- O primeiro uso de `faster-whisper` pode baixar o modelo pelo Hugging Face Hub e demorar. Sem internet ou cache local de modelo, esse fallback pode falhar.
+- O primeiro uso de `faster-whisper` ou WhisperX pode baixar modelos pelo Hugging Face Hub e demorar. Sem internet ou cache local de modelo, esse fallback pode falhar.
 - Transcricao local de audio e mais lenta e consome mais CPU/RAM do que usar legenda pronta.
 
 Opiniao tecnica: para uso pessoal, a abordagem e simples e adequada. Para ambiente real, validacao de URL, limites de tamanho e protecao contra enderecos internos ainda trariam ganho de seguranca.
@@ -778,13 +720,12 @@ Arquivos:
 
 - `src/gui/app_pyside.py`.
 - `src/gui/app_gemini.py`.
-- `src/gui/app_groq.py`.
 - `src/gui/app_azure_openai.py`.
 - `src/gui/markdown_renderer.py`, legado Tkinter nao usado pela GUI ativa.
 
-Fato: os tres providers GUI expõem uma classe chamada `ModernCityBotGUI`.
+Fato: os wrappers GUI de Gemini e Azure OpenAI expõem uma classe chamada `ModernCityBotGUI`.
 
-Fato: desde 13/07/2026, `src/gui/app_pyside.py` concentra a base visual em PySide6. `src/gui/app_gemini.py`, `src/gui/app_groq.py` e `src/gui/app_azure_openai.py` sao wrappers que injetam, respectivamente, `CityBotGemini`, `CityBotGroq` e `CityBotAzureOpenAI`.
+Fato: desde 13/07/2026, `src/gui/app_pyside.py` concentra a base visual em PySide6. `src/gui/app_gemini.py` e `src/gui/app_azure_openai.py` sao wrappers que injetam, respectivamente, `CityBotGemini` e `CityBotAzureOpenAI`.
 
 Fato: os wrappers de provider resolvem a raiz do projeto e adicionam esse caminho ao `sys.path` antes dos imports `src.*`. Isso permite executar diretamente arquivos como `src/gui/app_azure_openai.py` por caminho absoluto, alem de executar pelo `main.py`.
 
@@ -847,11 +788,11 @@ Risco real:
 
 Risco residual:
 
-- A base visual agora e compartilhada entre os tres providers; isso reduz duplicacao, mas faz qualquer regressao em `app_pyside.py` afetar Gemini, Groq e Azure ao mesmo tempo.
+- A base visual agora e compartilhada entre Gemini e Azure OpenAI; isso reduz duplicacao, mas faz qualquer regressao em `app_pyside.py` afetar os dois providers ao mesmo tempo.
 
 Fato: apos confirmacao do usuario, `clear_chat()` apaga somente as conversas persistidas, limpa a tela, o historico em memoria e o contexto carregado. Perfis de usuario sao preservados. A limpeza e bloqueada enquanto uma resposta esta em processamento.
 
-Fato: ao iniciar, as GUIs Gemini, Groq e Azure restauram o historico salvo com roles `user` e `assistant`.
+Fato: ao iniciar, as GUIs Gemini e Azure restauram o historico salvo com roles `user` e `assistant`.
 
 Impacto pratico: o comportamento visual agora corresponde ao estado persistido e o botao nao deixa conversas antigas no banco.
 
@@ -860,10 +801,9 @@ Impacto pratico: o comportamento visual agora corresponde ao estado persistido e
 Arquivos:
 
 - `src/core/bot_gemini.py`.
-- `src/core/bot_groq.py`.
 - `src/core/bot_azure_openai.py`.
 
-Fato: os tres providers possuem metodo `menu()`.
+Fato: os providers Gemini e Azure OpenAI possuem metodo `menu()`.
 
 Fato: o menu CLI oferece:
 
@@ -880,10 +820,6 @@ Fato: a CLI usa `pyperclip.copy('')` para limpar a area de transferencia ao inic
 
 Fato: a versao Gemini detecta texto na area de transferencia e oferece uso do conteudo colado.
 
-Fato: a versao Groq tambem usa `pyperclip.paste()` em parte do fluxo.
-
-Fato: em 27/06/2026, a restauracao do historico no CLI Groq foi corrigida para converter cada registro do banco em duas mensagens, `user` e `assistant`.
-
 Risco real:
 
 - Ler automaticamente area de transferencia pode gerar comportamento inesperado se houver senha, token, documento sensivel ou texto grande copiado.
@@ -898,7 +834,7 @@ Opiniao tecnica: para uso pessoal e pratico, isso pode ser conveniente. Para uso
 Fato:
 
 ```text
-Usuario -> GUI/CLI -> CityBotGemini ou CityBotGroq -> API LLM -> resposta -> SQLite
+Usuario -> GUI/CLI -> CityBotGemini ou CityBotAzureOpenAI -> API LLM -> resposta -> SQLite
 ```
 
 Riscos:
@@ -927,7 +863,7 @@ Riscos:
 Fato:
 
 ```text
-URL -> extracao de video_id -> YouTubeTranscriptApi -> fallback yt-dlp para legendas -> fallback yt-dlp audio + faster-whisper -> transcricao -> contexto do bot -> resposta LLM
+URL -> extracao de video_id -> YouTubeTranscriptApi -> fallback yt-dlp para legendas -> fallback yt-dlp audio + WhisperX opcional ou faster-whisper -> transcricao -> contexto do bot -> resposta LLM
 ```
 
 Riscos:
@@ -983,7 +919,7 @@ Riscos:
 Fato: em 27/06/2026, o `README.md` foi atualizado para refletir que o codigo ativo em `src/utils` usa:
 
 - `requests` e `BeautifulSoup` para site.
-- `youtube-transcript-api`, `yt-dlp` e `faster-whisper` para YouTube.
+- `youtube-transcript-api`, `yt-dlp`, `faster-whisper` e WhisperX opcional para YouTube.
 - `pypdf.PdfReader` para PDF.
 
 Fato: referencias antigas a `WebBaseLoader`, `YoutubeLoader` e `PyPDFLoader` foram removidas da documentacao principal.
@@ -1006,7 +942,7 @@ Pontos de atencao:
 - Cobertura automatizada ainda concentrada em banco e utilitarios.
 - Alguns providers e o OCR ainda tratam erros com `print` ou mensagens genericas.
 - Logging ainda nao possui configuracao central.
-- A validacao de configuracao cobre variaveis ausentes em Gemini, Groq e Azure OpenAI, mas ainda nao valida credenciais contra as APIs externas.
+- A validacao de configuracao cobre variaveis ausentes em Gemini e Azure OpenAI, mas ainda nao valida credenciais contra as APIs externas.
 - Falta de limites de contexto e tamanho de entrada.
 - Falta de timestamps e metadados no banco.
 
@@ -1022,12 +958,13 @@ Fato: os testes cobrem:
 
 - persistencia e limpeza do banco;
 - continuidade de gravacao depois da limpeza;
-- restauracao e limpeza do historico nas GUIs Gemini, Groq e Azure;
+- restauracao e limpeza do historico nas GUIs Gemini e Azure;
 - timeout e remocao de scripts no scraping;
 - parser de URLs do YouTube;
 - uso da API de transcricao compativel com a dependencia;
 - fallback via `yt-dlp` para legendas do YouTube quando a transcricao direta falha;
 - fallback via `faster-whisper` para transcricao local de audio quando transcricao e legendas falham;
+- fallback via WhisperX opcional quando `CITYBOT_WHISPER_ENGINE=whisperx` ou quando ele esta instalado no modo `auto`;
 - limite de duracao para transcricao local de audio;
 - mensagem contextual de bloqueio `HTTP 429 Too Many Requests` no fluxo de video;
 - configuracao opcional de cookies do navegador para `yt-dlp`;
@@ -1036,7 +973,7 @@ Fato: os testes cobrem:
 - paginas PDF sem texto;
 - contencao de arquivos OCR dentro de `PROJECT_ROOT/textos/`;
 - caminho padrao do banco na raiz do projeto;
-- erro claro quando Gemini ou Groq estao sem variaveis obrigatorias.
+- erro claro quando Gemini esta sem variaveis obrigatorias.
 
 Fato: em 27/06/2026, os 10 testes passaram e 16 arquivos Python de producao e teste passaram na validacao de AST.
 
@@ -1046,7 +983,7 @@ Fato: em 13/07/2026, os 22 testes passaram com:
 venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Fato: em 13/07/2026, apos a migracao para PySide6, as GUIs Gemini, Groq e Azure foram instanciadas com `QApplication` e fechadas sem chamar APIs externas para validar construcao de janela, estilos, widgets e layout.
+Fato: em 13/07/2026, apos a migracao para PySide6, as GUIs Gemini, Groq e Azure foram instanciadas com `QApplication` e fechadas sem chamar APIs externas para validar construcao de janela, estilos, widgets e layout. Em 17/07/2026, o provider Groq foi removido.
 
 Limitacao: ainda faltam testes de chamadas reais ou mockadas do caminho feliz dos providers, OCR e fluxos completos da GUI.
 
@@ -1077,7 +1014,7 @@ Fatos:
 - Conversas sao salvas em `citybot.db`.
 - Textos de OCR podem ser salvos em `textos/`.
 - `.env` e `citybot.db` estao ignorados pelo Git.
-- Gemini e Groq enviam mensagens para APIs externas.
+- Gemini e Azure OpenAI enviam mensagens para APIs externas.
 
 Riscos:
 
@@ -1140,7 +1077,7 @@ Concluido em 13/07/2026:
 - `citybot.db` padronizado na raiz do projeto quando o caminho padrao e usado.
 - Arquivos OCR padronizados em `PROJECT_ROOT/textos`, sem depender do diretorio atual.
 - Gemini valida `GEMINI_API_KEY` e `GEMINI_MODEL` antes de criar cliente.
-- Groq valida `GROQ_API_KEY` e `GROQ_API_MODEL` antes de chamar o modelo.
+- Provider Groq removido para evitar conflito entre LangChain antigo e `numpy>=2` exigido pelo WhisperX opcional.
 - GUI ativa migrada para PySide6 com base visual unica em `src/gui/app_pyside.py`.
 
 Pendente:
@@ -1204,7 +1141,7 @@ Opiniao tecnica: como a GUI ativa ja foi unificada em `app_pyside.py`, a melhor 
 
 Por que essa opcao e superior:
 
-- Reduz diferencas de contrato entre Gemini, Groq e Azure.
+- Reduz diferencas de contrato entre Gemini e Azure.
 - Facilita adicionar novos providers no futuro.
 - Mantem a mudanca concentrada no core, sem trocar a experiencia do usuario.
 
@@ -1217,7 +1154,6 @@ src/
 │   ├── providers/
 │   │   ├── base.py
 │   │   ├── gemini.py
-│   │   ├── groq.py
 │   │   └── azure_openai.py
 │   └── citybot_service.py
 ├── gui/
@@ -1300,7 +1236,7 @@ Fato: o arquivo `LICENSE` indica copyright:
 Copyright (c) 2025 Felipe Cidade Soares
 ```
 
-Opiniao tecnica: MIT e adequada para projeto aberto, prototipo e reaproveitamento. Se o projeto virar produto com dependencias externas e uso de APIs, sera importante revisar tambem os termos de uso de Gemini, Groq, YouTube Transcript API, Tesseract e demais bibliotecas.
+Opiniao tecnica: MIT e adequada para projeto aberto, prototipo e reaproveitamento. Se o projeto virar produto com dependencias externas e uso de APIs, sera importante revisar tambem os termos de uso de Gemini, Azure OpenAI, YouTube Transcript API, Tesseract e demais bibliotecas.
 
 ## 32. Coisas que eu nao sei ainda
 
@@ -1308,7 +1244,7 @@ Estas informacoes nao foram confirmadas nesta analise:
 
 - Quais valores reais estao no `.env`, porque nao foram lidos para proteger chaves.
 - Se as chaves de API estao validas.
-- Se todos os fluxos manuais da GUI funcionam com APIs reais. A abertura das GUIs Gemini, Groq e Azure em PySide6 foi validada localmente sem chamada externa.
+- Se todos os fluxos manuais da GUI funcionam com APIs reais. A abertura das GUIs Gemini e Azure em PySide6 deve ser validada localmente sem chamada externa apos a remocao do Groq.
 - Se as APIs externas estao funcionando no momento.
 - Qual e o objetivo final do projeto, uso pessoal, portfolio, produto interno ou SaaS.
 
@@ -1337,7 +1273,7 @@ Fato: neste caso especifico, `codex.md` foi criado do zero, entao nao havia vers
 Validacao minima recomendada apos mudancas em codigo:
 
 ```powershell
-venv\Scripts\python.exe -m py_compile main.py src\core\database.py src\core\bot_groq.py src\core\bot_gemini.py src\core\bot_azure_openai.py src\utils\paths.py src\utils\scrapers.py src\utils\pdf_reader.py src\utils\ocr.py src\utils\file_writer.py src\gui\app_pyside.py src\gui\app_groq.py src\gui\app_gemini.py src\gui\app_azure_openai.py src\gui\markdown_renderer.py
+venv\Scripts\python.exe -m py_compile main.py src\core\database.py src\core\bot_gemini.py src\core\bot_azure_openai.py src\utils\paths.py src\utils\scrapers.py src\utils\pdf_reader.py src\utils\ocr.py src\utils\file_writer.py src\gui\app_pyside.py src\gui\app_gemini.py src\gui\app_azure_openai.py src\gui\markdown_renderer.py
 ```
 
 Validacao adicional recomendada quando houver testes:
@@ -1357,7 +1293,7 @@ Antes de mexer em provider:
 
 Antes de mexer em GUI:
 
-- Testar Gemini e Groq.
+- Testar Gemini e Azure OpenAI.
 - Testar envio de mensagem.
 - Testar carregar site, video, PDF e OCR.
 - Conferir se `clear_chat` faz exatamente o que o texto do botao promete.
@@ -1399,31 +1335,19 @@ pip install -r requirements.txt
 Executar GUI Gemini:
 
 ```powershell
-python main.py
-```
-
-Executar GUI Groq:
-
-```powershell
-python main.py --provider groq
+python main.py --provider gemini
 ```
 
 Executar GUI Azure OpenAI:
 
 ```powershell
-python main.py --provider azure_openai
+python main.py
 ```
 
 Executar CLI Gemini:
 
 ```powershell
 python main.py --mode cli
-```
-
-Executar CLI Groq:
-
-```powershell
-python main.py --provider groq --mode cli
 ```
 
 Executar CLI Azure OpenAI:
@@ -1435,7 +1359,7 @@ python main.py --provider azure_openai --mode cli
 Validar sintaxe:
 
 ```powershell
-venv\Scripts\python.exe -m py_compile main.py src\core\database.py src\core\bot_groq.py src\core\bot_gemini.py src\core\bot_azure_openai.py src\utils\paths.py src\utils\scrapers.py src\utils\pdf_reader.py src\utils\ocr.py src\utils\file_writer.py src\gui\app_pyside.py src\gui\app_groq.py src\gui\app_gemini.py src\gui\app_azure_openai.py src\gui\markdown_renderer.py
+venv\Scripts\python.exe -m py_compile main.py src\core\database.py src\core\bot_gemini.py src\core\bot_azure_openai.py src\utils\paths.py src\utils\scrapers.py src\utils\pdf_reader.py src\utils\ocr.py src\utils\file_writer.py src\gui\app_pyside.py src\gui\app_gemini.py src\gui\app_azure_openai.py src\gui\markdown_renderer.py
 ```
 
 Executar testes:
@@ -1452,7 +1376,7 @@ git status --short
 
 ## 36. Conclusao tecnica
 
-Fato: o CityBot ja possui uma estrutura funcional com entrada unificada, tres provedores de IA, GUI, CLI, utilitarios de conteudo e persistencia local.
+Fato: o CityBot ja possui uma estrutura funcional com entrada unificada, dois provedores de IA, GUI, CLI, utilitarios de conteudo e persistencia local.
 
 Inferencia: o projeto esta em fase de evolucao de prototipo para algo mais organizado, com vestigios de scripts anteriores e algumas inconsistencias de documentacao.
 

@@ -26,15 +26,15 @@ O CityBot foi pensado como um assistente pessoal para estudo e trabalho, capaz d
 - Manter histórico de conversas em um banco SQLite
 - Oferecer interação tanto por linha de comando quanto por interface gráfica desenvolvida em PySide6
 
-Ele suporta opções de inteligência artificial através das APIs da Groq, Google Gemini ou Azure OpenAI, integrando várias fontes de informação num fluxo único de conversa.
+Ele suporta opções de inteligência artificial através das APIs do Google Gemini ou Azure OpenAI, integrando várias fontes de informação num fluxo único de conversa.
 
 ---
 
 ## Principais funcionalidades
 
-- Chat em linguagem natural com modelos LLM via Groq, Gemini ou Azure OpenAI
+- Chat em linguagem natural com modelos LLM via Gemini ou Azure OpenAI
 - Leitura de conteúdo de sites com `requests` e `BeautifulSoup`
-- Transcrição de vídeos do YouTube com `youtube-transcript-api`, legendas via `yt-dlp` e fallback local com `faster-whisper`
+- Transcrição de vídeos do YouTube com `youtube-transcript-api`, legendas via `yt-dlp` e fallback local com `WhisperX` opcional ou `faster-whisper`
 - Barra de progresso na GUI quando o fallback precisa baixar áudio de vídeo
 - Leitura de PDFs com `pypdf`
 - OCR de imagens com OpenCV + Tesseract + langdetect
@@ -60,13 +60,11 @@ citybot/
 ├── src/
 │   ├── core/               # Lógica de negócio e banco de dados
 │   │   ├── database.py     # Gerenciamento SQLite
-│   │   ├── bot_groq.py     # Implementação Groq
 │   │   ├── bot_gemini.py   # Implementação Gemini
 │   │   └── bot_azure_openai.py # Implementação Azure OpenAI
 │   │
 │   ├── gui/                # Interface gráfica PySide6
 │   │   ├── app_pyside.py   # Base visual reutilizada pelos providers
-│   │   ├── app_groq.py
 │   │   ├── app_gemini.py
 │   │   ├── app_azure_openai.py
 │   │   └── markdown_renderer.py # Renderer legado Tkinter
@@ -84,7 +82,7 @@ citybot/
 
 A refatoração dividiu as responsabilidades em níveis:
 
-1. **Core (`src/core`)**: Contém a inteligência e o banco de dados. As classes `CityBotGroq`, `CityBotGemini` e `CityBotAzureOpenAI` gerenciam o fluxo de mensagens e persistência.
+1. **Core (`src/core`)**: Contém a inteligência e o banco de dados. As classes `CityBotGemini` e `CityBotAzureOpenAI` gerenciam o fluxo de mensagens e persistência.
 2. **GUI (`src/gui`)**: Responsável exclusiva pela apresentação visual e eventos da interface PySide6.
 3. **Utils (`src/utils`)**: Contém funções puras para extração de dados (OCR, Web, YouTube, PDF), facilitando a reutilização e testes.
 
@@ -93,8 +91,7 @@ A refatoração dividiu as responsabilidades em níveis:
 ## Tecnologias utilizadas
 
 - Python 3.x
-- LangChain (com `ChatGroq` e `ChatPromptTemplate`)
-- Groq API, Google Gemini API e Azure OpenAI para modelos de linguagem
+- Google Gemini API e Azure OpenAI para modelos de linguagem
 - OpenAI Python SDK (`AzureOpenAI`) para integração com Azure OpenAI
 - SQLite (via `sqlite3`)
 - PySide6 (interface gráfica)
@@ -107,6 +104,7 @@ A refatoração dividiu as responsabilidades em níveis:
 - `truststore` para usar os certificados confiáveis do sistema operacional
 - `Pillow` (PIL) para tratar imagem do logo na interface
 - `faster-whisper` para transcrição local de áudio quando legendas do YouTube falham
+- `WhisperX` como motor opcional de transcrição local mais robusto
 
 ---
 
@@ -116,8 +114,6 @@ Lista geral de dependências principais:
 
 ```text
 python-dotenv
-langchain
-langchain-groq
 google-genai
 openai
 requests
@@ -125,6 +121,8 @@ beautifulsoup4
 youtube-transcript-api
 yt-dlp
 faster-whisper
+# opcional
+whisperx
 truststore
 pytesseract
 opencv-python
@@ -139,7 +137,7 @@ PySide6
 Requisitos externos:
 
 * Tesseract instalado na máquina e acessível pelo sistema
-* Uma chave de API válida da Groq, Google Gemini ou Azure OpenAI, dependendo de qual provedor for utilizado
+* Uma chave de API válida do Google Gemini ou Azure OpenAI, dependendo de qual provedor for utilizado
 * Para Azure OpenAI com `responses.create`, use `openai>=1.68.0`
 
 ---
@@ -149,10 +147,6 @@ Requisitos externos:
 O CityBot espera encontrar as variáveis abaixo em um arquivo `.env` na raiz do projeto:
 
 ```text
-# Para utilizar a versão com Groq
-GROQ_API_KEY=SuaChaveAqui
-GROQ_API_MODEL=nome_do_modelo_groq
-
 # Para utilizar a versão com Google Gemini
 GEMINI_API_KEY=SuaChaveAqui
 GEMINI_MODEL=nome_do_modelo_gemini
@@ -170,10 +164,13 @@ CITYBOT_YOUTUBE_COOKIES_PROFILE=Default
 CITYBOT_YOUTUBE_COOKIES_FILE=C:\caminho\para\youtube_cookies.txt
 
 # Opcional: fallback local de transcrição de áudio
+CITYBOT_WHISPER_ENGINE=auto
 CITYBOT_WHISPER_MODEL=base
 CITYBOT_WHISPER_DEVICE=cpu
 CITYBOT_WHISPER_COMPUTE_TYPE=int8
 CITYBOT_WHISPER_LANGUAGE=pt
+CITYBOT_WHISPER_BATCH_SIZE=8
+CITYBOT_WHISPERX_ALIGN=false
 CITYBOT_WHISPER_MAX_AUDIO_SECONDS=7200
 ```
 
@@ -181,13 +178,9 @@ Se as respostas do Azure OpenAI ficarem cortadas, aumente `AZURE_MAX_OUTPUT_TOKE
 
 Para vídeos do YouTube, as variáveis de cookies são opcionais. Use apenas se aparecer erro `HTTP 429 Too Many Requests` ou bloqueio de transcrição. Valores comuns de `CITYBOT_YOUTUBE_COOKIES_BROWSER`: `chrome`, `edge` ou `firefox`. Se o Chrome/Edge estiver bloqueando ou falhando ao descriptografar cookies com DPAPI, o CityBot tenta novamente sem cookies do navegador; se a requisição anônima também for bloqueada, feche o navegador completamente ou prefira `CITYBOT_YOUTUBE_COOKIES_FILE` com um arquivo `cookies.txt` no formato Netscape. Arquivos JSON, HTML, SQLite ou texto copiado manualmente não são aceitos pelo `yt-dlp`.
 
-Se transcrição e legendas do YouTube falharem, o CityBot baixa temporariamente apenas o áudio e tenta transcrever localmente com `faster-whisper`. O primeiro uso pode demorar porque o modelo é baixado automaticamente. `CITYBOT_WHISPER_MODEL` usa `base` por padrão; modelos maiores tendem a ser melhores, mas mais lentos. `CITYBOT_WHISPER_LANGUAGE` pode ficar vazio para detecção automática. Por padrão, o fallback local aceita vídeos de até 7200 segundos; transmissões ainda ao vivo são recusadas até terminarem.
+Se transcrição e legendas do YouTube falharem, o CityBot baixa temporariamente apenas o áudio e tenta transcrever localmente. Por padrão, `CITYBOT_WHISPER_ENGINE=auto`: se o WhisperX estiver instalado, ele é usado primeiro; se não estiver, o app continua com `faster-whisper`. Para habilitar o WhisperX, instale `pip install -r requirements-whisperx.txt`. Você também pode forçar `CITYBOT_WHISPER_ENGINE=whisperx` ou `CITYBOT_WHISPER_ENGINE=faster-whisper`.
 
-Exemplos de modelos da Groq que podem ser usados:
-
-* `llama-3.3-70b-versatile`
-* `llama-3.1-8b-instant`
-* `gemma2-9b-it`
+O primeiro uso pode demorar porque o modelo é baixado automaticamente. `CITYBOT_WHISPER_MODEL` usa `base` por padrão; modelos maiores tendem a ser melhores, mas mais lentos. `CITYBOT_WHISPER_LANGUAGE` pode ficar vazio para detecção automática. `CITYBOT_WHISPERX_ALIGN=true` ativa o alinhamento do WhisperX, útil para timestamps, mas pode baixar modelos extras e demorar mais. Por padrão, o fallback local aceita vídeos de até 7200 segundos; transmissões ainda ao vivo são recusadas até terminarem.
 
 Exemplos de modelos do Google Gemini que podem ser usados:
 
@@ -229,6 +222,18 @@ python -m venv venv
 python -m pip install -r requirements.txt
 ```
 
+Para instalar também o WhisperX opcional:
+
+```powershell
+python -m pip install -r requirements-whisperx.txt
+```
+
+Se o ambiente virtual já tinha a versão antiga com Groq/LangChain, remova os pacotes antigos antes de instalar o WhisperX para evitar conflitos residuais:
+
+```powershell
+python -m pip uninstall -y langchain langchain-groq langchain-community groq
+```
+
 ### 2. Configurar o `.env`
 
 Certifique-se de configurar suas chaves no arquivo `.env` (conforme seção abaixo).
@@ -240,27 +245,21 @@ Você pode escolher o provedor de IA e o modo de interface:
 #### Interface Gráfica (Padrão)
 
 ```bash
-# Iniciar com Gemini (Padrão)
+# Iniciar com Azure OpenAI (padrão)
 python main.py
 
-# Iniciar interface com Groq
-python main.py --provider groq
-
-# Iniciar interface com Azure OpenAI
-python main.py --provider azure_openai
+# Iniciar interface com Gemini
+python main.py --provider gemini
 ```
 
 #### Linha de Comando (CLI)
 
 ```bash
-# Iniciar CLI com Gemini
+# Iniciar CLI com Azure OpenAI
 python main.py --mode cli
 
-# Iniciar CLI com Groq
-python main.py --provider groq --mode cli
-
-# Iniciar CLI com Azure OpenAI
-python main.py --provider azure_openai --mode cli
+# Iniciar CLI com Gemini
+python main.py --provider gemini --mode cli
 ```
 
 ---

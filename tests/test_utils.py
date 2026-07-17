@@ -19,6 +19,7 @@ from src.utils.scrapers import (
     YOUTUBE_COOKIES_BROWSER_ENV,
     YOUTUBE_COOKIES_FILE_ENV,
     YOUTUBE_COOKIES_PROFILE_ENV,
+    WHISPER_ENGINE_ENV,
     _audio_yt_dlp_options,
     _baixa_audio_yt_dlp,
     _carrega_legendas_yt_dlp,
@@ -122,6 +123,7 @@ class ScrapersTest(unittest.TestCase):
         ydl.extract_info.assert_called_once_with('https://youtu.be/abc123', download=False)
         ydl.urlopen.assert_called_once_with('https://captions.example/json3')
 
+    @patch.dict(os.environ, {WHISPER_ENGINE_ENV: 'faster-whisper', 'CITYBOT_WHISPER_LANGUAGE': ''})
     @patch('src.utils.scrapers._baixa_audio_yt_dlp')
     @patch('src.utils.scrapers.WhisperModel')
     @patch('src.utils.scrapers.YoutubeDL')
@@ -158,6 +160,57 @@ class ScrapersTest(unittest.TestCase):
             beam_size=5,
             vad_filter=True,
         )
+
+    @patch.dict(
+        os.environ,
+        {
+            WHISPER_ENGINE_ENV: 'whisperx',
+            'CITYBOT_WHISPER_MODEL': '',
+            'CITYBOT_WHISPER_DEVICE': '',
+            'CITYBOT_WHISPER_COMPUTE_TYPE': '',
+            'CITYBOT_WHISPER_LANGUAGE': '',
+            'CITYBOT_WHISPER_BATCH_SIZE': '',
+            'CITYBOT_WHISPERX_ALIGN': '',
+        },
+    )
+    @patch('src.utils.scrapers.whisperx')
+    @patch('src.utils.scrapers._baixa_audio_yt_dlp')
+    @patch('src.utils.scrapers.YoutubeDL')
+    @patch('src.utils.scrapers.YouTubeTranscriptApi')
+    def test_carrega_video_usa_whisperx_quando_configurado(self, mock_api, mock_youtube_dl, mock_download_audio, mock_whisperx):
+        mock_api.return_value.fetch.side_effect = RuntimeError('sem transcrição')
+
+        ydl = mock_youtube_dl.return_value.__enter__.return_value
+        ydl.extract_info.return_value = {
+            'title': 'Título do vídeo',
+            'subtitles': {},
+            'automatic_captions': {},
+        }
+        mock_download_audio.return_value = Path('audio.webm')
+        mock_whisperx.load_audio.return_value = 'audio-data'
+        model = mock_whisperx.load_model.return_value
+        model.transcribe.return_value = {
+            'segments': [
+                {'text': 'Texto do WhisperX'},
+                {'text': 'segunda parte'},
+            ],
+            'language': 'pt',
+        }
+
+        with self.assertLogs('src.utils.scrapers', level='WARNING'):
+            texto = carrega_video('https://youtu.be/abc123')
+
+        self.assertEqual(texto, 'Texto do WhisperX segunda parte')
+        self.assertEqual(texto.source_title, 'Título do vídeo')
+        mock_download_audio.assert_called_once()
+        mock_whisperx.load_model.assert_called_once_with(
+            'base',
+            device='cpu',
+            compute_type='int8',
+            language=None,
+        )
+        mock_whisperx.load_audio.assert_called_once_with('audio.webm')
+        model.transcribe.assert_called_once_with('audio-data', batch_size=8)
 
     @patch('src.utils.scrapers.YoutubeDL')
     @patch('src.utils.scrapers.YouTubeTranscriptApi')
