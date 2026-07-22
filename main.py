@@ -22,7 +22,7 @@ def run_gui(provider):
 
     app = QApplication.instance() or QApplication(sys.argv)
     window = ModernCityBotGUI(bot_factory=bot_factory, title=title)
-    window.show()
+    window.showMaximized()
     return app.exec()
 
 def run_cli(provider):

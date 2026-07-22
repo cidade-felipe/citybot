@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, call, patch
 
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QDialog, QMessageBox
 from src.gui.app_azure_openai import ModernCityBotGUI as AzureGUI
 from src.gui.app_gemini import ModernCityBotGUI as GeminiGUI
 from src.utils.scrapers import ExtractedContent
@@ -61,6 +61,29 @@ class GuiHistoryTest(unittest.TestCase):
                 gui.clear_message_widgets.assert_called_once_with()
                 self.assertEqual(gui.conversation_history, [])
                 self.assertEqual(gui.current_context, '')
+                gui.context_label.setText.assert_called_once_with('Chat Livre')
+
+    def test_chat_livre_reseta_sessao_sem_limpar_banco(self):
+        for gui_class in GUI_CLASSES:
+            with self.subTest(gui=gui_class.__module__):
+                gui = gui_class.__new__(gui_class)
+                gui.bot = Mock()
+                gui.is_processing = False
+                gui.current_context = 'Contexto anterior'
+                gui.conversation_history = [('user', 'Pergunta')]
+                gui.context_label = Mock()
+                gui.clear_message_widgets = Mock()
+                gui._clear_ocr_export = Mock()
+                gui._hide_download_progress = Mock()
+                gui.add_system_message = Mock()
+                gui.set_status = Mock()
+
+                gui.set_chat_mode()
+
+                self.assertEqual(gui.current_context, '')
+                self.assertEqual(gui.conversation_history, [])
+                gui.bot.limpar_conversas.assert_not_called()
+                gui.clear_message_widgets.assert_called_once_with()
                 gui.context_label.setText.assert_called_once_with('Chat Livre')
 
     def test_contexto_vazio_usa_mensagem_de_erro_contextual(self):
@@ -148,6 +171,7 @@ class GuiHistoryTest(unittest.TestCase):
         for gui_class in GUI_CLASSES:
             with self.subTest(gui=gui_class.__module__):
                 gui = gui_class.__new__(gui_class)
+                gui.bot = Mock()
                 gui.context_label = Mock()
                 gui.add_system_message = Mock()
                 gui.set_status = Mock()
@@ -170,6 +194,101 @@ class GuiHistoryTest(unittest.TestCase):
                     'Vídeo carregado',
                     'Agora você pode fazer perguntas sobre: Título do vídeo',
                 )
+                gui.bot.save_context.assert_called_once_with(
+                    'Vídeo',
+                    'https://youtu.be/abc123',
+                    'Título do vídeo',
+                    'Texto do vídeo',
+                )
+
+    def test_load_saved_context_reseta_sessao_e_ativa_contexto(self):
+        for gui_class in GUI_CLASSES:
+            with self.subTest(gui=gui_class.__module__):
+                gui = gui_class.__new__(gui_class)
+                gui.bot = Mock()
+                gui.bot.load_contexts.return_value = [
+                    {
+                        'id': 7,
+                        'source_type': 'Site',
+                        'source_ref': 'https://example.com',
+                        'display_name': 'Example',
+                        'created_at': '2026-07-22 06:00:00',
+                    }
+                ]
+                gui.bot.load_context.return_value = {
+                    'id': 7,
+                    'source_type': 'Site',
+                    'source_ref': 'https://example.com',
+                    'display_name': 'Example',
+                    'content': 'Conteúdo salvo',
+                    'created_at': '2026-07-22 06:00:00',
+                }
+                gui.is_processing = False
+                gui.current_context = 'Contexto anterior'
+                gui.conversation_history = [('user', 'Pergunta')]
+                gui.context_label = Mock()
+                gui.clear_message_widgets = Mock()
+                gui._clear_ocr_export = Mock()
+                gui._hide_download_progress = Mock()
+                gui.add_system_message = Mock()
+                gui.set_status = Mock()
+
+                selected_label = '#7 - Site: Example (2026-07-22 06:00:00)'
+                with patch(
+                    f'{gui_class.load_saved_context.__module__}.QInputDialog.getItem',
+                    return_value=(selected_label, True),
+                ):
+                    gui.load_saved_context()
+
+                self.assertEqual(gui.current_context, 'Conteúdo salvo')
+                self.assertEqual(gui.conversation_history, [])
+                gui.clear_message_widgets.assert_called_once_with()
+                gui.context_label.setText.assert_called_once_with('Site: Example')
+                gui.add_system_message.assert_called_once_with(
+                    'Contexto restaurado',
+                    'Agora você pode fazer perguntas sobre: Example',
+                )
+
+    def test_generate_image_dispara_tarefa_sem_limpar_contexto(self):
+        for gui_class in GUI_CLASSES:
+            with self.subTest(gui=gui_class.__module__):
+                gui = gui_class.__new__(gui_class)
+                gui.bot = Mock()
+                gui.bot.gerar_imagem.return_value = 'imagem-gerada'
+                gui.is_processing = False
+                gui.current_context = 'Contexto atual'
+                gui.set_status = Mock()
+                gui.add_system_message = Mock()
+                gui.show_generated_image = Mock()
+
+                def run_task(task, on_success, **_kwargs):
+                    on_success(task())
+
+                gui._run_task = run_task
+
+                dialog = Mock()
+                dialog.exec.return_value = QDialog.DialogCode.Accepted
+                dialog.values.return_value = {
+                    'prompt': 'Uma cidade minimalista',
+                    'size': '1024x1024',
+                    'quality': 'low',
+                    'output_format': 'png',
+                }
+
+                with patch(
+                    f'{gui_class.generate_image.__module__}.ImageGenerationDialog',
+                    return_value=dialog,
+                ):
+                    gui.generate_image()
+
+                gui.bot.gerar_imagem.assert_called_once_with(
+                    prompt='Uma cidade minimalista',
+                    size='1024x1024',
+                    quality='low',
+                    output_format='png',
+                )
+                gui.show_generated_image.assert_called_once_with('imagem-gerada')
+                self.assertEqual(gui.current_context, 'Contexto atual')
 
 
 if __name__ == '__main__':

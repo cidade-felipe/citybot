@@ -2,7 +2,7 @@
 
 Arquivo criado em 03/06/2026.
 
-Ultima atualizacao documentada: 17/07/2026, apos remocao do provider Groq/LangChain para liberar a instalacao opcional do WhisperX com `numpy>=2`.
+Ultima atualizacao documentada: 22/07/2026, apos adicionar geracao de imagens com `gpt-image-2` pela GUI PySide6.
 
 Este documento foi criado para servir como memoria tecnica detalhada do projeto `citybot`. Ele deve ser atualizado sempre que houver alteracao relevante no codigo, dependencias, arquitetura, comportamento, dados, riscos conhecidos ou forma de execucao.
 
@@ -102,6 +102,7 @@ citybot/
 ├── .gitignore
 ├── venv/
 ├── Backup/
+├── imagens/
 ├── textos/
 ├── testes/
 ├── tests/
@@ -120,6 +121,7 @@ citybot/
     │   ├── app_azure_openai.py
     │   └── markdown_renderer.py
     ├── figures/
+    │   ├── citybot_banner_minimal.png
     │   ├── citybot_logo.png
     │   ├── citybot_logo.svg
     │   └── logo.png
@@ -128,6 +130,7 @@ citybot/
         ├── scrapers.py
         ├── pdf_reader.py
         ├── ocr.py
+        ├── image_generator.py
         └── file_writer.py
 ```
 
@@ -135,6 +138,7 @@ Fato: `src/` contem o codigo ativo modular.
 
 Fato: em 03/06/2026, os assets visuais observados estavam em `src/figures/`:
 
+- `citybot_banner_minimal.png`, banner PNG minimalista usado no topo da area de chat da GUI PySide6.
 - `citybot_logo.png`, imagem PNG de 1600 x 1600 em RGBA.
 - `citybot_logo.svg`, versao vetorial do logo.
 - `logo.png`, imagem PNG de 2816 x 1536 em modo de paleta.
@@ -233,6 +237,11 @@ CITYBOT_WHISPER_LANGUAGE
 CITYBOT_WHISPER_BATCH_SIZE
 CITYBOT_WHISPERX_ALIGN
 CITYBOT_WHISPER_MAX_AUDIO_SECONDS
+CITYBOT_IMAGE_MODEL
+CITYBOT_IMAGE_BASE_URL
+CITYBOT_IMAGE_API_KEY
+CITYBOT_IMAGE_AZURE_SCOPE
+OPENAI_API_KEY
 ```
 
 Fato: `CityBotGemini` le explicitamente `GEMINI_API_KEY` e `GEMINI_MODEL`.
@@ -246,6 +255,12 @@ Fato: `CITYBOT_YOUTUBE_COOKIES_FILE` tem prioridade sobre `CITYBOT_YOUTUBE_COOKI
 Fato: `CITYBOT_WHISPER_ENGINE`, `CITYBOT_WHISPER_MODEL`, `CITYBOT_WHISPER_DEVICE`, `CITYBOT_WHISPER_COMPUTE_TYPE`, `CITYBOT_WHISPER_LANGUAGE`, `CITYBOT_WHISPER_BATCH_SIZE`, `CITYBOT_WHISPERX_ALIGN` e `CITYBOT_WHISPER_MAX_AUDIO_SECONDS` sao opcionais e controlam o fallback local de transcricao de audio.
 
 Fato: `CITYBOT_WHISPER_ENGINE=auto` e o padrao. Nesse modo, o CityBot tenta WhisperX primeiro quando o pacote opcional esta instalado; se nao estiver, continua usando `faster-whisper`. Tambem e possivel forcar `whisperx` ou `faster-whisper`.
+
+Fato: `CITYBOT_IMAGE_MODEL` e opcional e usa `gpt-image-2` por padrao para geracao de imagens.
+
+Fato: `CITYBOT_IMAGE_BASE_URL` e opcional. Quando configurado, a geracao de imagens usa o SDK `OpenAI` apontando para esse `base_url`. Se `CITYBOT_IMAGE_API_KEY` tambem estiver configurado, essa chave e usada no endpoint. Sem `CITYBOT_IMAGE_API_KEY`, o app autentica com `DefaultAzureCredential` via `azure-identity`. `CITYBOT_IMAGE_AZURE_SCOPE` permite trocar o escopo, com padrao `https://ai.azure.com/.default`.
+
+Fato: quando `CITYBOT_IMAGE_BASE_URL` nao esta configurado, a geracao de imagens usa `OPENAI_API_KEY` diretamente com a API OpenAI.
 
 Fato: Gemini e Azure OpenAI validam variaveis obrigatorias no construtor, guardam `config_error` e retornam erro claro em `resposta_bot` quando a configuracao esta incompleta.
 
@@ -278,6 +293,7 @@ Dependencias principais:
 - `pyperclip`: leitura/limpeza da area de transferencia no CLI.
 - `pillow`: imagens na GUI e OCR Gemini.
 - `PySide6`: interface grafica desktop baseada em Qt.
+- `azure-identity`: autenticacao Azure AD para gerar imagens via Azure AI Foundry quando `CITYBOT_IMAGE_BASE_URL` estiver configurado.
 
 Fato: `PySide6==6.11.1` foi adicionado ao `requirements.txt` em 13/07/2026. `tkinter` permanece apenas em `src/gui/markdown_renderer.py`, arquivo legado que nao e mais usado pela GUI ativa.
 
@@ -286,6 +302,8 @@ Fato: `yt-dlp==2026.7.4` foi adicionado ao `requirements.txt` em 13/07/2026 como
 Fato: `faster-whisper==1.2.1` foi adicionado ao `requirements.txt` em 13/07/2026 como fallback local de transcricao de audio para videos do YouTube.
 
 Fato: `requirements-whisperx.txt` foi adicionado em 17/07/2026 para instalar `whisperx==3.8.6` de forma opcional.
+
+Fato: `azure-identity>=1.17.1` foi adicionado em 22/07/2026 para suportar o fluxo opcional de geracao de imagens via Azure AI Foundry com `DefaultAzureCredential`.
 
 Fato: em 17/07/2026, o provider Groq e as dependencias `langchain`, `langchain-groq` e `langchain-community` foram removidos porque conflitam com `whisperx==3.8.6`, que exige `numpy>=2.1.0`.
 
@@ -406,6 +424,17 @@ CREATE TABLE IF NOT EXISTS conversations (
 );
 ```
 
+```sql
+CREATE TABLE IF NOT EXISTS contexts (
+    id INTEGER PRIMARY KEY,
+    source_type TEXT NOT NULL,
+    source_ref TEXT,
+    display_name TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
 Fato: metodos disponiveis:
 
 - `create_table()`.
@@ -413,10 +442,13 @@ Fato: metodos disponiveis:
 - `load_user(name)`.
 - `save_conversation(user_message, assistant_response)`.
 - `load_conversations()`.
+- `save_context(source_type, source_ref, display_name, content)`.
+- `load_contexts(limit=50)`.
+- `load_context(context_id)`.
 - `limpar_conversas()`.
 - `limpar_banco()`.
 
-Fato: `limpar_conversas()` apaga somente o historico. `limpar_banco()` executa `DELETE` nas tabelas `conversations` e `users`. Ambos preservam o schema para novas gravacoes.
+Fato: `limpar_conversas()` apaga somente o historico de conversas e preserva contextos salvos. `limpar_banco()` executa `DELETE` nas tabelas `conversations`, `users` e `contexts`. Ambos preservam o schema para novas gravacoes.
 
 Risco real:
 
@@ -737,9 +769,17 @@ Fato: a GUI usa:
 - Entrada de texto com `QTextEdit`.
 - Barra de status.
 - Logo carregado de `src/figures/citybot_logo.png`.
+- Banner minimalista carregado de `src/figures/citybot_banner_minimal.png` no topo da area de chat.
+- Dialogo de geracao de imagens com prompt, tamanho, qualidade e formato.
 - Threads para chamadas demoradas.
 
 Fato: em 13/07/2026, a interface ativa foi migrada de Tkinter/ttk para PySide6. A implementacao usa `QMainWindow`, `QFrame`, `QPushButton`, `QLabel`, `QTextEdit`, `QTextBrowser`, `QScrollArea`, `QFileDialog`, `QInputDialog` e `QMessageBox`.
+
+Fato: em 22/07/2026, a GUI passou a abrir maximizada tanto pelo `main.py` quanto pelos wrappers diretos de provider.
+
+Fato: em 22/07/2026, a GUI passou a exibir um banner minimalista fixo acima da conversa. O banner e renderizado por um widget proprio com recorte responsivo, sem entrar no historico de mensagens.
+
+Fato: em 22/07/2026, a GUI passou a gerar imagens com `gpt-image-2`, exibindo um preview na conversa e salvando o arquivo em `PROJECT_ROOT/imagens/`.
 
 Fato: as bolhas de mensagem usam `QTextBrowser.setMarkdown()` para renderizar Markdown basico e abrir links externos.
 
@@ -773,9 +813,13 @@ Fato: opcoes de fonte na sidebar:
 - Carregar Video.
 - Carregar PDF.
 - OCR Imagem.
+- Gerar Imagem.
 - Baixar Texto OCR apos carregar uma imagem com OCR.
 - Barra de progresso no rodape da GUI durante download de audio do YouTube para fallback local.
 - Conteudos extraidos podem carregar metadado `source_title`; a GUI usa esse titulo no contexto atual e no card de carregamento quando disponivel, evitando mostrar apenas a URL do video.
+- Contextos carregados de site, video, PDF e OCR sao salvos na tabela `contexts`.
+- Ao entrar em chat livre, carregar outra fonte ou restaurar um contexto salvo, a GUI limpa somente a sessao visivel e o `conversation_history` em memoria. O banco de conversas e os contextos salvos sao preservados.
+- A sidebar possui botao para selecionar contextos salvos e reativar o conteudo como contexto atual.
 - Limpar Conversa.
 
 Fato: a GUI usa `threading.Thread(..., daemon=True)` para processar mensagens e carregamentos externos.
@@ -900,7 +944,35 @@ Riscos:
 - Qualidade varia conforme imagem.
 - Nome de arquivo nao sanitizado.
 
-### 20.6 OCR Gemini
+### 20.6 Geracao de imagens
+
+Fato:
+
+```text
+Prompt -> src/utils/image_generator.py -> OpenAI SDK images.generate -> base64 -> PROJECT_ROOT/imagens/
+```
+
+Fato: a geracao usa `gpt-image-2` por padrao, envia `n=1`, valida tamanho, qualidade e formato, decodifica `data[0].b64_json` e salva a imagem localmente.
+
+Fato: quando `CITYBOT_IMAGE_BASE_URL` esta configurado, o client usa `OpenAI(base_url=..., api_key=...)` com `CITYBOT_IMAGE_API_KEY` ou token provider do `DefaultAzureCredential`. Sem esse endpoint, usa `OPENAI_API_KEY`.
+
+Riscos:
+
+- Requer permissao e quota no deployment `gpt-image-2`.
+- O uso via Azure AI Foundry depende do login/credencial disponivel para `DefaultAzureCredential`.
+- Prompts e imagens geradas passam pelos filtros de seguranca do provedor.
+
+### 20.7 Contextos salvos
+
+Fato:
+
+```text
+Fonte carregada -> contexto extraido -> tabela contexts -> selecao na GUI -> contexto atual do bot
+```
+
+Fato: a troca de fonte ou modo limpa apenas a sessao ativa na interface e na memoria temporaria, sem apagar conversas persistidas nem contextos salvos.
+
+### 20.8 OCR Gemini
 
 Fato:
 
@@ -944,7 +1016,7 @@ Pontos de atencao:
 - Logging ainda nao possui configuracao central.
 - A validacao de configuracao cobre variaveis ausentes em Gemini e Azure OpenAI, mas ainda nao valida credenciais contra as APIs externas.
 - Falta de limites de contexto e tamanho de entrada.
-- Falta de timestamps e metadados no banco.
+- Falta de timestamps e metadados no historico de conversas.
 
 Opiniao tecnica: o projeto esta em um bom estagio de MVP funcional, mas ainda nao esta pronto para ser tratado como produto confiavel em producao.
 
@@ -957,8 +1029,10 @@ Fato: a pasta `testes/` esta ignorada no `.gitignore` e contem scripts legados.
 Fato: os testes cobrem:
 
 - persistencia e limpeza do banco;
+- salvamento, listagem e restauracao de contextos no banco;
 - continuidade de gravacao depois da limpeza;
 - restauracao e limpeza do historico nas GUIs Gemini e Azure;
+- reset da sessao ativa ao voltar para chat livre ou restaurar um contexto salvo;
 - timeout e remocao de scripts no scraping;
 - parser de URLs do YouTube;
 - uso da API de transcricao compativel com a dependencia;
@@ -1012,13 +1086,14 @@ Impacto pratico:
 Fatos:
 
 - Conversas sao salvas em `citybot.db`.
+- Contextos carregados tambem sao salvos em `citybot.db`.
 - Textos de OCR podem ser salvos em `textos/`.
 - `.env` e `citybot.db` estao ignorados pelo Git.
 - Gemini e Azure OpenAI enviam mensagens para APIs externas.
 
 Riscos:
 
-- Dados sensiveis podem ficar no banco local.
+- Dados sensiveis podem ficar no banco local, tanto em conversas quanto em contextos salvos.
 - Imagens enviadas ao Gemini podem conter dados privados.
 - Conteudo do clipboard pode ser usado sem o usuario perceber claramente.
 - Nomes de arquivos OCR podem permitir caminhos indesejados se nao forem sanitizados.

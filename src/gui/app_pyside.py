@@ -3,10 +3,13 @@ import sys
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QEvent, Qt, Signal
-from PySide6.QtGui import QFont, QPixmap
+from PySide6.QtCore import QObject, QEvent, QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -26,6 +29,109 @@ from PySide6.QtWidgets import (
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+BANNER_PATH = PROJECT_ROOT / 'src' / 'figures' / 'citybot_banner_minimal.png'
+IMAGE_SIZE_OPTIONS = ('1536x1024', '1024x1024', '1024x1536', '2048x1152', '2048x2048', 'auto')
+IMAGE_QUALITY_OPTIONS = ('medium', 'low', 'high', 'auto')
+IMAGE_FORMAT_OPTIONS = ('png', 'jpeg', 'webp')
+
+
+class BannerLabel(QWidget):
+    def __init__(self, image_path, border_color, fallback_color):
+        super().__init__()
+        self._pixmap = QPixmap(str(image_path))
+        self._border_color = border_color
+        self._fallback_color = fallback_color
+        self.setFixedHeight(168)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+
+        rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        path = QPainterPath()
+        path.addRoundedRect(rect, 8, 8)
+        painter.fillPath(path, QColor(self._fallback_color))
+
+        if not self._pixmap.isNull():
+            painter.setClipPath(path)
+            scaled = self._pixmap.scaled(
+                self.size(),
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            x = (self.width() - scaled.width()) // 2
+            y = (self.height() - scaled.height()) // 2
+            painter.drawPixmap(x, y, scaled)
+            painter.setClipping(False)
+
+        painter.setPen(QColor(self._border_color))
+        painter.drawPath(path)
+
+
+class ImageGenerationDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Gerar imagem')
+        self.setMinimumWidth(560)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
+
+        prompt_label = QLabel('Prompt')
+        prompt_label.setProperty('role', 'accent')
+        layout.addWidget(prompt_label)
+
+        self.prompt_input = QTextEdit()
+        self.prompt_input.setPlaceholderText('Descreva a imagem...')
+        self.prompt_input.setFixedHeight(132)
+        layout.addWidget(self.prompt_input)
+
+        options = QHBoxLayout()
+        options.setSpacing(10)
+        self.size_combo = self._combo(IMAGE_SIZE_OPTIONS)
+        self.quality_combo = self._combo(IMAGE_QUALITY_OPTIONS)
+        self.format_combo = self._combo(IMAGE_FORMAT_OPTIONS)
+        options.addWidget(self._option('Tamanho', self.size_combo))
+        options.addWidget(self._option('Qualidade', self.quality_combo))
+        options.addWidget(self._option('Formato', self.format_combo))
+        layout.addLayout(options)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText('Gerar')
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText('Cancelar')
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def values(self):
+        return {
+            'prompt': self.prompt_input.toPlainText().strip(),
+            'size': self.size_combo.currentText(),
+            'quality': self.quality_combo.currentText(),
+            'output_format': self.format_combo.currentText(),
+        }
+
+    def _combo(self, values):
+        combo = QComboBox()
+        combo.addItems(values)
+        return combo
+
+    def _option(self, label, widget):
+        box = QWidget()
+        layout = QVBoxLayout(box)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        text = QLabel(label)
+        text.setProperty('role', 'muted')
+        layout.addWidget(text)
+        layout.addWidget(widget)
+        return box
 
 
 class WorkerSignals(QObject):
@@ -132,6 +238,19 @@ class ModernCityBotGUI(QMainWindow):
             border-radius: 6px;
             padding: 8px;
             selection-background-color: {self.colors['accent_secondary']};
+        }}
+        QDialog QTextEdit, QDialog QComboBox {{
+            color: {self.colors['text_primary']};
+            background: {self.colors['bg_tertiary']};
+            border: 1px solid {self.colors['border']};
+            border-radius: 6px;
+            padding: 8px;
+            selection-background-color: {self.colors['accent_secondary']};
+        }}
+        QDialog QComboBox QAbstractItemView {{
+            color: {self.colors['text_primary']};
+            background: {self.colors['bg_tertiary']};
+            selection-background-color: {self.colors['accent']};
         }}
         QPushButton {{
             border: 0;
@@ -240,6 +359,8 @@ class ModernCityBotGUI(QMainWindow):
             ('📹  Analisar Vídeo do YouTube', self.load_video, ''),
             ('📄  Analisar PDF', self.load_pdf, ''),
             ('🖼️  Analisar Texto de Imagem', self.load_image_ocr, ''),
+            ('🎨  Gerar Imagem', self.generate_image, ''),
+            ('📚  Contextos Salvos', self.load_saved_context, ''),
         ]
         for text, callback, variant in actions:
             layout.addWidget(self._button(text, callback, variant))
@@ -289,8 +410,12 @@ class ModernCityBotGUI(QMainWindow):
     def _build_chat_area(self):
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setContentsMargins(26, 24, 26, 22)
-        layout.setSpacing(18)
+        layout.setContentsMargins(26, 20, 26, 22)
+        layout.setSpacing(16)
+
+        banner = self._build_chat_banner()
+        if banner:
+            layout.addWidget(banner)
 
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
@@ -309,6 +434,11 @@ class ModernCityBotGUI(QMainWindow):
 
         layout.addWidget(self._build_input_panel())
         return container
+
+    def _build_chat_banner(self):
+        if not BANNER_PATH.exists():
+            return None
+        return BannerLabel(BANNER_PATH, self.colors['border'], self.colors['bg_tertiary'])
 
     def _build_input_panel(self):
         panel = QFrame()
@@ -462,6 +592,53 @@ class ModernCityBotGUI(QMainWindow):
         self._insert_message_widget(row)
         self._scroll_to_bottom()
 
+    def add_generated_image_card(self, result):
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+
+        bubble_width = min(self._message_width(False), 900)
+        bubble = QFrame()
+        bubble.setObjectName('assistantBubble')
+        bubble.setFixedWidth(bubble_width)
+        bubble_layout = QVBoxLayout(bubble)
+        bubble_layout.setContentsMargins(18, 14, 18, 14)
+        bubble_layout.setSpacing(10)
+
+        title = QLabel('Imagem gerada')
+        title.setProperty('role', 'accent')
+        title.setFont(QFont('Segoe UI', 13, QFont.Weight.Bold))
+        bubble_layout.addWidget(title)
+
+        pixmap = QPixmap(str(result.path))
+        if not pixmap.isNull():
+            preview = QLabel()
+            preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            preview.setPixmap(
+                pixmap.scaled(
+                    bubble_width - 36,
+                    420,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+            bubble_layout.addWidget(preview)
+
+        prompt = QLabel(f'Prompt: {self._shorten_text(result.prompt, 180)}')
+        prompt.setProperty('role', 'muted')
+        prompt.setWordWrap(True)
+        bubble_layout.addWidget(prompt)
+
+        output = QLabel(f'Arquivo: {result.path}')
+        output.setProperty('role', 'muted')
+        output.setWordWrap(True)
+        bubble_layout.addWidget(output)
+
+        row_layout.addWidget(bubble)
+        row_layout.addStretch(1)
+        self._insert_message_widget(row)
+        self._scroll_to_bottom()
+
     def _insert_message_widget(self, widget):
         stretch_index = max(0, self.messages_layout.count() - 1)
         self.messages_layout.insertWidget(stretch_index, widget)
@@ -507,6 +684,11 @@ class ModernCityBotGUI(QMainWindow):
         self.is_processing = False
         self.set_status('●  Pronto', 'success')
 
+    def show_generated_image(self, result):
+        self.add_generated_image_card(result)
+        self.is_processing = False
+        self.set_status('●  Imagem gerada', 'success')
+
     def show_error(self, error_message):
         self._hide_download_progress()
         self.add_message_bubble(f'Erro: {error_message}', is_user=False)
@@ -514,10 +696,12 @@ class ModernCityBotGUI(QMainWindow):
         self.set_status('●  Erro', 'error')
 
     def set_chat_mode(self):
-        self._clear_ocr_export()
-        self.current_context = ''
+        if not self._can_change_context():
+            return
+        self._reset_active_session()
         self.context_label.setText('Chat Livre')
         self.add_system_message('Modo Chat Livre', 'Pergunte o que quiser. Estou pronto para conversar.')
+        self.set_status('●  Pronto', 'success')
 
     def set_loaded_context(self, content):
         if not content or not content.strip():
@@ -526,16 +710,19 @@ class ModernCityBotGUI(QMainWindow):
         self.current_context = content
 
     def load_website(self):
+        if not self._can_change_context():
+            return
         url, ok = QInputDialog.getText(self, 'Carregar Site', 'Digite a URL do site:')
         if ok and url.strip():
-            self._clear_ocr_export()
+            self._reset_active_session()
             self._load_context('Site', url.strip(), lambda: self.bot.carrega_site(url.strip()), f'{url[:50]}...')
 
     def load_video(self):
+        if not self._can_change_context():
+            return
         url, ok = QInputDialog.getText(self, 'Carregar Vídeo', 'Digite a URL do YouTube:')
         if ok and url.strip():
-            self._clear_ocr_export()
-            self._hide_download_progress()
+            self._reset_active_session()
             self._load_context(
                 'Vídeo',
                 url.strip(),
@@ -549,12 +736,16 @@ class ModernCityBotGUI(QMainWindow):
             )
 
     def load_pdf(self):
+        if not self._can_change_context():
+            return
         filename, _ = QFileDialog.getOpenFileName(self, 'Selecionar PDF', '', 'PDF files (*.pdf);;All files (*.*)')
         if filename:
-            self._clear_ocr_export()
+            self._reset_active_session()
             self._load_context('PDF', filename, lambda: self.bot.carrega_pdf(filename), os.path.basename(filename))
 
     def load_image_ocr(self):
+        if not self._can_change_context():
+            return
         filename, _ = QFileDialog.getOpenFileName(
             self,
             'Selecionar Imagem',
@@ -563,6 +754,7 @@ class ModernCityBotGUI(QMainWindow):
         )
         if filename:
             name = os.path.splitext(os.path.basename(filename))[0]
+            self._reset_active_session()
             self._load_context(
                 'OCR',
                 filename,
@@ -570,6 +762,67 @@ class ModernCityBotGUI(QMainWindow):
                 os.path.basename(filename),
                 after_success=lambda content: self._set_ocr_export(content, name),
             )
+
+    def generate_image(self):
+        if self.is_processing:
+            QMessageBox.warning(self, 'Aguarde', 'Espere a ação atual terminar antes de gerar outra imagem.')
+            return
+
+        dialog = ImageGenerationDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        options = dialog.values()
+        if not options['prompt']:
+            QMessageBox.information(self, 'Gerar imagem', 'Informe um prompt para gerar a imagem.')
+            return
+
+        self.is_processing = True
+        self.set_status('●  Gerando imagem...', 'warning')
+        self.add_system_message('Gerando imagem', 'Aguarde enquanto o gpt-image-2 cria a imagem.')
+        self._run_task(
+            lambda: self.bot.gerar_imagem(**options),
+            self.show_generated_image,
+        )
+
+    def load_saved_context(self):
+        if not self._can_change_context():
+            return
+
+        contexts = self.bot.load_contexts()
+        if not contexts:
+            QMessageBox.information(self, 'Contextos salvos', 'Nenhum contexto salvo ainda.')
+            return
+
+        labels_by_context = {
+            self._saved_context_label(context): context
+            for context in contexts
+        }
+        selected_label, ok = QInputDialog.getItem(
+            self,
+            'Contextos salvos',
+            'Escolha um contexto:',
+            list(labels_by_context),
+            0,
+            False,
+        )
+        if not ok or not selected_label:
+            return
+
+        selected_context = labels_by_context[selected_label]
+        context = self.bot.load_context(selected_context['id'])
+        if not context:
+            QMessageBox.warning(self, 'Contextos salvos', 'Esse contexto não foi encontrado no banco.')
+            return
+
+        self._reset_active_session()
+        self.current_context = context['content']
+        self.context_label.setText(f"{context['source_type']}: {context['display_name']}")
+        self.add_system_message(
+            'Contexto restaurado',
+            f"Agora você pode fazer perguntas sobre: {context['display_name']}",
+        )
+        self.set_status('●  Contexto restaurado', 'success')
 
     def download_ocr_text(self):
         if not self.last_ocr_text.strip():
@@ -631,6 +884,7 @@ class ModernCityBotGUI(QMainWindow):
             self.context_label.setText(f'{source_type}: {resolved_display_name}')
             if after_success:
                 after_success(content)
+            self._save_loaded_context(source_type, source_ref, resolved_display_name, content)
             self.add_system_message(f'{source_type} carregado', f'Agora você pode fazer perguntas sobre: {resolved_display_name}')
             self._hide_download_progress()
             self.set_status('●  Pronto', 'success')
@@ -640,6 +894,42 @@ class ModernCityBotGUI(QMainWindow):
     def _context_display_name(self, content, fallback):
         source_title = str(getattr(content, 'source_title', '') or '').strip()
         return source_title or fallback
+
+    def _can_change_context(self):
+        if not self.is_processing:
+            return True
+
+        QMessageBox.warning(self, 'Aguarde', 'Espere a resposta atual terminar antes de trocar de contexto.')
+        return False
+
+    def _reset_active_session(self):
+        self.current_context = ''
+        self.conversation_history = []
+        self.clear_message_widgets()
+        self._clear_ocr_export()
+        self._hide_download_progress()
+
+    def _save_loaded_context(self, source_type, source_ref, display_name, content):
+        self.bot.save_context(
+            source_type,
+            source_ref,
+            display_name,
+            str(content),
+        )
+
+    def _saved_context_label(self, context):
+        display_name = str(context.get('display_name') or context.get('source_ref') or 'Sem nome')
+        if len(display_name) > 80:
+            display_name = f'{display_name[:77]}...'
+        created_at = context.get('created_at') or ''
+        return f"#{context['id']} - {context['source_type']}: {display_name} ({created_at})"
+
+    @staticmethod
+    def _shorten_text(text, limit):
+        value = str(text or '').strip()
+        if len(value) <= limit:
+            return value
+        return f'{value[:limit - 3]}...'
 
     def clear_chat(self):
         if self.is_processing:
@@ -775,5 +1065,5 @@ class ModernCityBotGUI(QMainWindow):
 def run_qt_app(window_factory):
     app = QApplication.instance() or QApplication(sys.argv)
     window = window_factory()
-    window.show()
+    window.showMaximized()
     return app.exec()

@@ -42,6 +42,17 @@ class CityBotDatabase:
             );
             """)
 
+            self.conexao.execute("""
+            CREATE TABLE IF NOT EXISTS contexts (
+                id INTEGER PRIMARY KEY,
+                source_type TEXT NOT NULL,
+                source_ref TEXT,
+                display_name TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            """)
+
     def save_user(self, name, preferences):
         with self.conexao:
             self.conexao.execute("INSERT INTO users (name, preferences) VALUES (?, ?);", (name, preferences))
@@ -61,6 +72,49 @@ class CityBotDatabase:
                 'FROM conversations ORDER BY id;'
             ).fetchall()
 
+    def save_context(self, source_type, source_ref, display_name, content):
+        with self.conexao:
+            cursor = self.conexao.execute(
+                """
+                INSERT INTO contexts (source_type, source_ref, display_name, content)
+                VALUES (?, ?, ?, ?);
+                """,
+                (
+                    source_type,
+                    source_ref,
+                    display_name,
+                    content,
+                ),
+            )
+            return cursor.lastrowid
+
+    def load_contexts(self, limit=50):
+        with self.conexao:
+            rows = self.conexao.execute(
+                """
+                SELECT id, source_type, source_ref, display_name, created_at
+                FROM contexts
+                ORDER BY id DESC
+                LIMIT ?;
+                """,
+                (limit,),
+            ).fetchall()
+        return [self._context_summary_from_row(row) for row in rows]
+
+    def load_context(self, context_id):
+        with self.conexao:
+            row = self.conexao.execute(
+                """
+                SELECT id, source_type, source_ref, display_name, content, created_at
+                FROM contexts
+                WHERE id = ?;
+                """,
+                (context_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return self._context_from_row(row)
+
     def limpar_conversas(self):
         with self.conexao:
             self.conexao.execute('DELETE FROM conversations;')
@@ -69,3 +123,25 @@ class CityBotDatabase:
         with self.conexao:
             self.conexao.execute('DELETE FROM conversations;')
             self.conexao.execute('DELETE FROM users;')
+            self.conexao.execute('DELETE FROM contexts;')
+
+    @staticmethod
+    def _context_summary_from_row(row):
+        return {
+            'id': row[0],
+            'source_type': row[1],
+            'source_ref': row[2],
+            'display_name': row[3],
+            'created_at': row[4],
+        }
+
+    @staticmethod
+    def _context_from_row(row):
+        return {
+            'id': row[0],
+            'source_type': row[1],
+            'source_ref': row[2],
+            'display_name': row[3],
+            'content': row[4],
+            'created_at': row[5],
+        }

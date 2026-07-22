@@ -28,3 +28,6 @@ google-genai==1.67.0
 
 # Provedor Azure OpenAI
 openai>=1.68.0
+
+# Geração de imagens via Azure AI Foundry com DefaultAzureCredential
+azure-identity>=1.17.1

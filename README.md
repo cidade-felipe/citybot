@@ -23,6 +23,8 @@ O CityBot foi pensado como um assistente pessoal para estudo e trabalho, capaz d
 - Ler e interpretar páginas da web
 - Transcrever e analisar vídeos do YouTube
 - Ler texto em imagens usando OCR, salvar e baixar o resultado em `.txt`
+- Gerar imagens com `gpt-image-2`
+- Salvar contextos carregados e restaurá-los depois pela interface
 - Manter histórico de conversas em um banco SQLite
 - Oferecer interação tanto por linha de comando quanto por interface gráfica desenvolvida em PySide6
 
@@ -36,9 +38,11 @@ Ele suporta opções de inteligência artificial através das APIs do Google Gem
 - Leitura de conteúdo de sites com `requests` e `BeautifulSoup`
 - Transcrição de vídeos do YouTube com `youtube-transcript-api`, legendas via `yt-dlp` e fallback local com `WhisperX` opcional ou `faster-whisper`
 - Barra de progresso na GUI quando o fallback precisa baixar áudio de vídeo
+- Contextos de site, vídeo, PDF e OCR salvos no SQLite para reutilização posterior
 - Leitura de PDFs com `pypdf`
 - OCR de imagens com OpenCV + Tesseract + langdetect
 - Salvamento de texto de imagens em `.docx` e `.txt`
+- Geração de imagens com `gpt-image-2`, salvando os arquivos em `imagens/`
 - Histórico de conversas e usuários em SQLite
 - Interface de linha de comando com menu interativo
 - Interface gráfica com PySide6, área de chat e botões para PDF, site e imagem
@@ -73,6 +77,7 @@ citybot/
 │       ├── scrapers.py
 │       ├── pdf_reader.py
 │       ├── ocr.py
+│       ├── image_generator.py
 │       └── file_writer.py
 ```
 
@@ -105,6 +110,7 @@ A refatoração dividiu as responsabilidades em níveis:
 - `Pillow` (PIL) para tratar imagem do logo na interface
 - `faster-whisper` para transcrição local de áudio quando legendas do YouTube falham
 - `WhisperX` como motor opcional de transcrição local mais robusto
+- `azure-identity` para autenticar geração de imagens via Azure AI Foundry quando `CITYBOT_IMAGE_BASE_URL` estiver configurado
 
 ---
 
@@ -116,6 +122,7 @@ Lista geral de dependências principais:
 python-dotenv
 google-genai
 openai
+azure-identity
 requests
 beautifulsoup4
 youtube-transcript-api
@@ -172,6 +179,15 @@ CITYBOT_WHISPER_LANGUAGE=pt
 CITYBOT_WHISPER_BATCH_SIZE=8
 CITYBOT_WHISPERX_ALIGN=false
 CITYBOT_WHISPER_MAX_AUDIO_SECONDS=7200
+
+# Opcional: geração de imagens com gpt-image-2
+CITYBOT_IMAGE_MODEL=gpt-image-2
+CITYBOT_IMAGE_BASE_URL=https://seu-recurso.services.ai.azure.com/openai/v1
+CITYBOT_IMAGE_API_KEY=SuaChaveDoRecursoAzure
+CITYBOT_IMAGE_AZURE_SCOPE=https://ai.azure.com/.default
+
+# Alternativa para usar a API direta da OpenAI sem CITYBOT_IMAGE_BASE_URL
+OPENAI_API_KEY=SuaChaveOpenAI
 ```
 
 Se as respostas do Azure OpenAI ficarem cortadas, aumente `AZURE_MAX_OUTPUT_TOKENS`. O valor `300` é baixo para resumos longos, análises e respostas com listas.
@@ -181,6 +197,8 @@ Para vídeos do YouTube, as variáveis de cookies são opcionais. Use apenas se 
 Se transcrição e legendas do YouTube falharem, o CityBot baixa temporariamente apenas o áudio e tenta transcrever localmente. Por padrão, `CITYBOT_WHISPER_ENGINE=auto`: se o WhisperX estiver instalado, ele é usado primeiro; se não estiver, o app continua com `faster-whisper`. Para habilitar o WhisperX, instale `pip install -r requirements-whisperx.txt`. Você também pode forçar `CITYBOT_WHISPER_ENGINE=whisperx` ou `CITYBOT_WHISPER_ENGINE=faster-whisper`.
 
 O primeiro uso pode demorar porque o modelo é baixado automaticamente. `CITYBOT_WHISPER_MODEL` usa `base` por padrão; modelos maiores tendem a ser melhores, mas mais lentos. `CITYBOT_WHISPER_LANGUAGE` pode ficar vazio para detecção automática. `CITYBOT_WHISPERX_ALIGN=true` ativa o alinhamento do WhisperX, útil para timestamps, mas pode baixar modelos extras e demorar mais. Por padrão, o fallback local aceita vídeos de até 7200 segundos; transmissões ainda ao vivo são recusadas até terminarem.
+
+Para gerar imagens, use o botão `Gerar Imagem` na GUI. Se `CITYBOT_IMAGE_BASE_URL` estiver configurado, o CityBot chama o endpoint Azure AI Foundry com o SDK `OpenAI`. Com `CITYBOT_IMAGE_API_KEY`, ele usa a chave desse recurso; sem essa variável, usa `DefaultAzureCredential` e o escopo `CITYBOT_IMAGE_AZURE_SCOPE`. Sem `CITYBOT_IMAGE_BASE_URL`, ele usa `OPENAI_API_KEY` diretamente na API pública da OpenAI. Os arquivos gerados são salvos em `imagens/`.
 
 Exemplos de modelos do Google Gemini que podem ser usados:
 
@@ -290,6 +308,8 @@ Resumo dos fluxos principais:
   O bot carrega a transcrição do vídeo e responde conforme as perguntas sobre o conteúdo.
 * Imagem (OCR):
   O bot detecta o texto na imagem, salva em `.docx` e `.txt` e pode responder sobre esse conteúdo.
+* Contextos salvos:
+  Ao carregar site, vídeo, PDF ou OCR, o contexto é salvo no banco. Ao trocar de fonte ou voltar para chat livre, a sessão atual é limpa da tela e da memória temporária, mas o banco de conversas e os contextos salvos são preservados.
 * Histórico:
   A GUI restaura as conversas salvas ao iniciar. Após confirmação, o botão “Limpar Conversa” apaga o histórico persistido e também remove o contexto carregado, sem excluir perfis de usuário.
 

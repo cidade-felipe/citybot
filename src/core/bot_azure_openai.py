@@ -8,6 +8,7 @@ from src.utils.scrapers import carrega_site, carrega_video
 from src.utils.pdf_reader import carrega_pdf
 from src.utils.ocr import carrega_imagem_ocr_tesseract
 from src.utils.file_writer import salvar_texto
+from src.utils.image_generator import generate_image
 
 
 class CityBotAzureOpenAI:
@@ -73,11 +74,23 @@ class CityBotAzureOpenAI:
             salvar_texto(texto_final, nome)
         return texto_final
 
+    def gerar_imagem(self, prompt, size='1536x1024', quality='medium', output_format='png'):
+        return generate_image(prompt, size=size, quality=quality, output_format=output_format)
+
     def save_conversation(self, user_message, assistant_response):
         self.db.save_conversation(user_message, assistant_response)
 
     def load_conversations(self):
         return self.db.load_conversations()
+
+    def save_context(self, source_type, source_ref, display_name, content):
+        return self.db.save_context(source_type, source_ref, display_name, content)
+
+    def load_contexts(self):
+        return self.db.load_contexts()
+
+    def load_context(self, context_id):
+        return self.db.load_context(context_id)
 
     def limpar_conversas(self):
         self.db.limpar_conversas()

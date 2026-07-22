@@ -1,3 +1,4 @@
+import base64
 import os
 import sys
 import tempfile
@@ -5,11 +6,15 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
+import httpx
+import openai
+
 root_path = Path(__file__).resolve().parents[1]
 if str(root_path) not in sys.path:
     sys.path.append(str(root_path))
 
 from src.utils.file_writer import salvar_texto
+from src.utils.image_generator import IMAGE_API_KEY_ENV, IMAGE_MODEL_ENV, generate_image
 from src.utils.pdf_reader import carrega_pdf
 from src.utils.scrapers import (
     ExtractedContent,
@@ -31,6 +36,129 @@ from src.utils.scrapers import (
     carrega_site,
     carrega_video,
 )
+
+
+class ImageGeneratorTest(unittest.TestCase):
+    @patch('src.utils.image_generator.load_dotenv')
+    @patch.dict(os.environ, {IMAGE_MODEL_ENV: 'gpt-image-2'}, clear=True)
+    def test_generate_image_salva_base64_com_gpt_image_2(self, _mock_load_dotenv):
+        client = Mock()
+        response = Mock()
+        response.data = [
+            Mock(b64_json=base64.b64encode(b'imagem').decode('ascii')),
+        ]
+        client.images.generate.return_value = response
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = generate_image(
+                'Cidade futurista minimalista',
+                size='1024x1024',
+                quality='low',
+                output_format='webp',
+                output_dir=temp_dir,
+                client=client,
+            )
+
+            self.assertEqual(result.path.read_bytes(), b'imagem')
+            self.assertEqual(result.path.suffix, '.webp')
+
+        client.images.generate.assert_called_once_with(
+            model='gpt-image-2',
+            prompt='Cidade futurista minimalista',
+            n=1,
+            size='1024x1024',
+            quality='low',
+            output_format='webp',
+            moderation='auto',
+        )
+
+    @patch('src.utils.image_generator.load_dotenv')
+    @patch.dict(os.environ, {}, clear=True)
+    def test_generate_image_exige_openai_api_key_sem_cliente_injetado(self, _mock_load_dotenv):
+        with self.assertRaisesRegex(ValueError, 'OPENAI_API_KEY'):
+            generate_image('Uma imagem simples')
+
+    @patch('src.utils.image_generator.OpenAI')
+    @patch('src.utils.image_generator._azure_token_provider', return_value='token-provider')
+    @patch('src.utils.image_generator.load_dotenv')
+    @patch.dict(
+        os.environ,
+        {
+            'CITYBOT_IMAGE_BASE_URL': 'https://example.services.ai.azure.com/openai/v1',
+            IMAGE_MODEL_ENV: 'gpt-image-2',
+        },
+        clear=True,
+    )
+    def test_generate_image_usa_base_url_azure_quando_configurada(
+        self,
+        _mock_load_dotenv,
+        mock_token_provider,
+        mock_openai,
+    ):
+        client = mock_openai.return_value
+        response = Mock()
+        response.data = [
+            Mock(b64_json=base64.b64encode(b'imagem').decode('ascii')),
+        ]
+        client.images.generate.return_value = response
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            generate_image('Imagem via Azure', output_dir=temp_dir)
+
+        mock_token_provider.assert_called_once_with()
+        mock_openai.assert_called_once_with(
+            base_url='https://example.services.ai.azure.com/openai/v1',
+            api_key='token-provider',
+        )
+
+    @patch('src.utils.image_generator.OpenAI')
+    @patch('src.utils.image_generator._azure_token_provider')
+    @patch('src.utils.image_generator.load_dotenv')
+    @patch.dict(
+        os.environ,
+        {
+            'CITYBOT_IMAGE_BASE_URL': 'https://example.services.ai.azure.com/openai/v1',
+            IMAGE_API_KEY_ENV: 'azure-key',
+            IMAGE_MODEL_ENV: 'gpt-image-2',
+        },
+        clear=True,
+    )
+    def test_generate_image_usa_chave_do_endpoint_azure_quando_configurada(
+        self,
+        _mock_load_dotenv,
+        mock_token_provider,
+        mock_openai,
+    ):
+        client = mock_openai.return_value
+        response = Mock()
+        response.data = [
+            Mock(b64_json=base64.b64encode(b'imagem').decode('ascii')),
+        ]
+        client.images.generate.return_value = response
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            generate_image('Imagem via chave Azure', output_dir=temp_dir)
+
+        mock_token_provider.assert_not_called()
+        mock_openai.assert_called_once_with(
+            base_url='https://example.services.ai.azure.com/openai/v1',
+            api_key='azure-key',
+        )
+
+    @patch('src.utils.image_generator.load_dotenv')
+    @patch.dict(os.environ, {'OPENAI_API_KEY': 'wrong-key'}, clear=True)
+    def test_generate_image_orienta_configurar_endpoint_azure_em_erro_401(self, _mock_load_dotenv):
+        client = Mock()
+        request = httpx.Request('POST', 'https://api.openai.com/v1/images/generations')
+        response = httpx.Response(401, request=request)
+        client.images.generate.side_effect = openai.AuthenticationError(
+            'Incorrect API key',
+            response=response,
+            body=None,
+        )
+
+        with self.assertRaisesRegex(RuntimeError, 'CITYBOT_IMAGE_BASE_URL'):
+            generate_image('Imagem via Azure sem endpoint', client=client)
 
 
 class ScrapersTest(unittest.TestCase):
